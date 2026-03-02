@@ -1020,12 +1020,27 @@ bot.catch((err, ctx) => {
   try { ctx.reply('❌ Fehler. Bitte /start'); } catch(_) {}
 });
 
-// Start bot
-bot.launch().then(() => {
-  console.log('🤖 AbmeldeBot Telegram gestartet!');
-  console.log('Bot username:', bot.botInfo.username);
-  console.log('\n📱 Jetzt in Telegram: /start\n');
-});
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
+// ─── LAUNCH COM RETRY ──────────────────────────────────────────────────────
+async function startBot() {
+  try {
+    await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+    console.log('🧹 Webhook limpo');
+  } catch(e) { console.log('Webhook cleanup:', e.message); }
+  try {
+    await bot.launch();
+    console.log('✅ AbmeldeBot gestartet!');
+    console.log('📱 Jetzt in Telegram: /start');
+  } catch(err) {
+    if (err.message && err.message.includes('409')) {
+      console.log('⚠️ Conflict 409 — aguardando 15s...');
+      setTimeout(startBot, 15000);
+    } else {
+      console.error('❌ Erro:', err.message);
+      setTimeout(startBot, 5000);
+    }
+  }
+}
+startBot();
+process.once('SIGINT',  () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));

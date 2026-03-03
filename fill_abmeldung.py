@@ -107,7 +107,7 @@ def fill_pdf(data: dict, output_path: str):
         "Person 1 Religionsgesellschaft":                                             "",
         "Person 1 Staatsangehörigkeiten":                                             nat,
         "Person 1 Ordens- Künstlername":                                              "",
-        "Datum, Unterschirft":                                                        datum,
+        "Datum, Unterschirft":                                                        "",  # preenchido via fitz abaixo
     }
 
     bisherig = data.get("BisherigWohnung","alleinige").lower().strip()
@@ -172,14 +172,14 @@ def fill_pdf(data: dict, output_path: str):
     doc = fitz.open(tmp_path)
     page = doc[0]
 
-    # Limpar área do campo Datum (apagar conteúdo do widget visualmente)
-    # A área do campo de data+assinatura é aprox. y=794..807
-    page.draw_rect(fitz.Rect(310, 792, 578, 810), color=(1,1,1), fill=(1,1,1))
+    # Apagar campo Datum via widget (deixar vazio no pypdf, campo foi preenchido com "")
+    # Cobrir zona do widget com branco para garantir que não renderiza sobras
+    page.draw_rect(fitz.Rect(310, 790, 580, 814), color=(1,1,1), fill=(1,1,1))
 
     name_text = f"{vorname} {nachname}".strip()
     # Data e nome na mesma linha, mesma fonte (size 8)
     datum_name = f"{datum}    {name_text}"
-    page.insert_text(fitz.Point(312, 805), datum_name, fontsize=8, color=(0,0,0))
+    page.insert_text(fitz.Point(312, 806), datum_name, fontsize=8, color=(0,0,0))
 
     sig_b64 = data.get("SignaturBase64","")
     if sig_b64:

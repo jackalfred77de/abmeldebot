@@ -34,7 +34,7 @@ def fill_pdf(data: dict, output_path: str):
         "Person 1 Geschlecht":                                                          data.get("Geschlecht", ""),
         "Person 1 Tag Ort Land der Geburt":                                             geburtsinfo,
         "Person 1 Staatsangehörigkeiten":                                               data.get("Staatsangehoerigkeit", ""),
-        "Datum, Unterschirft":                                                          (data.get("Datum", "") + "  " + data.get("Vorname", "") + " " + data.get("Nachname", "")).strip(),
+        "Datum, Unterschirft":                                                          data.get("Datum", ""),
     }
 
     bisherig = data.get("BisherigWohnung", "alleinige").lower().strip()

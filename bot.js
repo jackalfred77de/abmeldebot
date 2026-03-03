@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const { Telegraf, Markup } = require('telegraf');
 const axios = require('axios');
-const { execFile } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 const nodemailer = require('nodemailer');
 const path = require('path');
 const fs = require('fs');
@@ -24,6 +24,7 @@ const GRAPH_TENANT_ID     = process.env.GRAPH_TENANT_ID     || '';
 const GRAPH_CLIENT_ID     = process.env.GRAPH_CLIENT_ID     || '';
 const GRAPH_CLIENT_SECRET = process.env.GRAPH_CLIENT_SECRET || '';
 const GRAPH_SENDER        = process.env.GRAPH_SENDER        || 'buero@rafer.de';
+const ANTHROPIC_API_KEY   = process.env.ANTHROPIC_API_KEY   || '';
 const FIRM_ADDRESS  = 'Rechtsanwalt Frederico Reichel, Katzbachstr. 18, 10965 Berlin';
 const FIRM_EMAIL    = 'info@rafer.de';
 const BOT_DIR       = __dirname;
@@ -96,6 +97,71 @@ function normalizeNationality(input) {
   if (!input) return input;
   const key = input.toLowerCase().trim();
   return NATIONALITY_MAP[key] || input;
+}
+
+// Tradução IA (fallback para mapa local)
+async function translateToGerman(text, context) {
+  if (!text || !ANTHROPIC_API_KEY) return text;
+  try {
+    const https = require('https');
+    const body = JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 50,
+      messages: [{
+        role: 'user',
+        content: `Translate this ${context} to German (single word/phrase only, no explanation): "${text}". Answer only with the German word.`
+      }]
+    });
+    return await new Promise((resolve) => {
+      const req = https.request({
+        hostname: 'api.anthropic.com',
+        path: '/v1/messages',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01'
+        }
+      }, (res) => {
+        let data = '';
+        res.on('data', d => data += d);
+        res.on('end', () => {
+          try {
+            const j = JSON.parse(data);
+            resolve(j.content?.[0]?.text?.trim() || text);
+          } catch { resolve(text); }
+        });
+      });
+      req.on('error', () => resolve(text));
+      req.setTimeout(5000, () => { req.destroy(); resolve(text); });
+      req.write(body);
+      req.end();
+    });
+  } catch { return text; }
+}
+
+// Gerar Vollmacht PDF via Python
+async function generateVollmacht(data) {
+  const today = new Date();
+  const datum = `${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()}`;
+  const pdfData = {
+    Vorname:  data.firstName,
+    Nachname: data.lastName,
+    Bezirk:   data.bezirk || 'Berlin',
+    Datum:    datum,
+  };
+  const orderId = data.orderId || ('AB' + Date.now());
+  const outPath = path.join(BOT_DIR, 'pdfs', `Vollmacht_${orderId}.pdf`);
+  const pythonScript = path.join(BOT_DIR, 'fill_abmeldung.py');
+  const PYTHON_PATH = process.env.PYTHON_PATH || 'python3';
+
+  return new Promise((resolve, reject) => {
+    execFile(PYTHON_PATH, [pythonScript, JSON.stringify(pdfData), outPath, 'vollmacht'], {timeout: 30000}, (err, stdout, stderr) => {
+      if (err) { console.error('Vollmacht error:', stderr); reject(err); return; }
+      const match = stdout.match(/VOLLMACHT_OK:(.+)/);
+      resolve(match ? match[1].trim() : outPath);
+    });
+  });
 }
 
 function createSession(chatId) {
@@ -234,12 +300,13 @@ Bestellung: ${data.orderId}
 // Translations
 const translations = {
   de: {
-    welcome: '👋 Willkommen beim AbmeldeBot / Welcome to AbmeldeBot / Bem-vindo ao AbmeldeBot!\n\n🇩🇪 Ich helfe Ihnen bei Ihrer Abmeldung in Berlin.\n🇬🇧 I help you with your deregistration in Berlin.\n🇧🇷 Eu ajudo com sua baixa de registro em Berlim.\n\nBitte Sprache wählen / Please choose language / Escolha o idioma:',
+    welcome: '🏛 *Kanzlei Rechtsanwalt Frederico Reichel*\n\n👋 Willkommen beim offiziellen Abmeldungs-Service der Kanzlei Reichel.\n\n🔒 *Datenschutz:* Alle Ihre Daten werden vertraulich behandelt und nach Abschluss des Services gelöscht.\n\n──────────────────────\n\n🇩🇪 Ich helfe Ihnen mit der Abmeldung in Berlin.\n🇬🇧 I help you with deregistration in Berlin.\n🇧🇷 Eu ajudo com a baixa de registro em Berlim.\n\nBitte Sprache wählen / Please choose language / Escolha o idioma:',
     service_select: '✨ Bitte wählen Sie Ihren Service:\n\n━━━━━━━━━━━━━━━━━━━━━\n📝 *DIY Service – €4,99*\n✅ Wir füllen das Abmeldeformular vollständig aus\n✅ Sie erhalten das PDF per E-Mail\n📌 Sie unterschreiben und senden per Post/E-Mail\n\n━━━━━━━━━━━━━━━━━━━━━\n🎯 *Full Service – €39,99*\n✅ Wir füllen das Formular aus\n✅ Offizielle Vollmacht auf Ihren Namen\n✅ Wir versenden direkt ans Bürgeramt\n⚖️ Durch RA Frederico Reichel, Berlin\n━━━━━━━━━━━━━━━━━━━━━\n\nWelchen Service möchten Sie?',
     ask_firstname: '📝 Wie ist Ihr **Vorname**?\n\n_Alle Vornamen, genau wie im Ausweis (z.B. Maria Clara)._',
     ask_lastname: '📝 Wie ist Ihr **Nachname**?\n\n_Alle Nachnamen wie im Ausweis (z.B. Silva Oliveira)._',
     ask_birthdate: '📅 Geburtsdatum?\n\nBitte im Format: TT.MM.JJJJ\nBeispiel: 15.03.1990',
     ask_birthplace: '🏙 Geburtsort?\n\nBeispiel: Berlin',
+    ask_gender: '⚧ Geschlecht? (männlich / weiblich / divers)',
     ask_nationality: '🌍 Staatsangehörigkeit?\n\nBeispiel: Deutsch',
     ask_address: '🏠 Ihre **aktuelle Adresse** in Berlin?\n\nBitte komplett:\nStraße Hausnummer, PLZ Berlin\n\nBeispiel: Katzbachstr. 18, 10965 Berlin',
     ask_moveout: '📆 An welchem Tag ziehen Sie aus?\n\nFormat: TT.MM.JJJJ\nBeispiel: 31.12.2025',
@@ -262,6 +329,9 @@ const translations = {
     ask_signature: '✍️ Bitte senden Sie ein **Foto Ihrer Unterschrift**!\n\n📸 So geht\'s:\n1. Unterschreiben Sie auf weißem Papier\n2. Fotografieren Sie nur die Unterschrift\n3. Senden Sie das Foto hier\n\n⚠️ Muss mit Ausweis-Unterschrift übereinstimmen!',
     ask_id_front: '📸 Bitte senden Sie ein Foto von Ihrem **Ausweis (Vorderseite)**',
     ask_id_back: '📸 Jetzt die **Rückseite** Ihres Ausweises bitte',
+    ask_vollmacht: '📜 Bitte senden Sie ein **Foto oder Scan der unterschriebenen Vollmacht**\n\n_(Sie haben die Vollmacht per E-Mail erhalten. Unterschreiben und hier einsenden.)_',
+    ask_anmeldung: '🗂 Falls vorhanden, senden Sie bitte eine **Kopie Ihrer letzten Anmeldung**.\n\n_Nicht zwingend erforderlich, aber hilfreich._',
+    skip_doc: '⏭ Überspringen (habe ich nicht dabei)',
     ask_family: '👨‍👩‍👧 Melden Sie auch **Familienmitglieder** ab?\n\n(Ehepartner, Kinder, die an derselben Adresse wohnten)',
     family_yes: '✅ Ja, Familienmitglieder hinzufügen',
     family_no: '➡️ Nein, weiter',
@@ -298,12 +368,13 @@ const translations = {
     help: '📚 **Hilfe**\n\n/start - Neu starten\n/cancel - Abbrechen\n/help - Diese Hilfe\n\n📧 info@rafer.de\n🏢 ' + FIRM_ADDRESS
   },
   pt: {
-    welcome: '👋 Bem-vindo ao AbmeldeBot!\n\nEu ajudo você com sua baixa de registro em Berlim.\n\nEscolha seu idioma:',
+    welcome: '🏛 *Escritório Rechtsanwalt Frederico Reichel*\n\n👋 Bem-vindo ao serviço oficial de Abmeldung do escritório Reichel.\n\n🔒 *Privacidade:* Todos os seus dados são tratados com sigilo e serão apagados após a entrega do serviço.\n\nEscolha seu idioma:',
     service_select: '✨ Escolha o seu serviço:\n\n━━━━━━━━━━━━━━━━━━━━━\n📝 *Serviço DIY – €4,99*\n✅ Preenchemos o formulário completamente (PDF)\n✅ Você recebe por e-mail\n📌 Você assina e envia pelos correios/e-mail\n\n━━━━━━━━━━━━━━━━━━━━━\n🎯 *Serviço Completo – €39,99*\n✅ Preenchemos o formulário\n✅ Procuração oficial em seu nome\n✅ Enviamos diretamente ao Bürgeramt\n⚖️ Adv. Frederico Reichel, Berlim\n━━━━━━━━━━━━━━━━━━━━━\n\nQual serviço você escolhe?',
     ask_firstname: '📝 Qual é seu **primeiro nome** (e outros prenomes)?\n\n_Todos os nomes como no documento. Ex: Maria Clara_',
     ask_lastname: '📝 Qual é seu **sobrenome**?\n\n_Todos os sobrenomes como no documento. Ex: Silva Oliveira_',
     ask_birthdate: '📅 Data de nascimento?\n\nFormato: DD.MM.AAAA\nExemplo: 15.03.1990',
     ask_birthplace: '🏙 Cidade de nascimento?',
+    ask_gender: '⚧ Sexo? (masculino / feminino / outro)',
     ask_nationality: '🌍 Nacionalidade?',
     ask_address: '🏠 Seu **endereço atual** em Berlim?\n\nCompleto:\nRua Número, CEP Berlin\n\nExemplo: Katzbachstr. 18, 10965 Berlin',
     ask_moveout: '📆 Data da mudança?\n\nFormato: DD.MM.AAAA',
@@ -326,6 +397,9 @@ const translations = {
     ask_signature: '✍️ Envie uma **foto da sua assinatura**!\n\n📸 Como:\n1. Assine em papel branco\n2. Fotografe somente a assinatura\n3. Envie aqui\n\n⚠️ Deve coincidir com a do documento de identidade',
     ask_id_front: '📸 Foto do **documento (frente)**',
     ask_id_back: '📸 Agora a **parte de trás**',
+    ask_vollmacht: '📜 Por favor envie uma **foto ou scan da Vollmacht assinada**\n\n_(Você recebeu a Vollmacht por email. Assine e envie aqui.)_',
+    ask_anmeldung: '🗂 Se possível, envie uma **cópia da sua última Anmeldung** (confirmação de registo).\n\n_Não obrigatório — mas ajuda. Pode enviar foto ou PDF._',
+    skip_doc: '⏭ Pular (não tenho agora)',
     ask_family: '👨‍👩‍👧 Vai incluir **familiares** no formulário?\n\n(Cônjuge, filhos que moravam no mesmo endereço)',
     family_yes: '✅ Sim, adicionar familiares',
     family_no: '➡️ Não, continuar',
@@ -362,12 +436,13 @@ const translations = {
     help: '📚 **Ajuda**\n\n/start - Recomeçar\n/cancel - Cancelar\n/help - Ajuda\n\n📧 info@rafer.de\n🏢 ' + FIRM_ADDRESS
   },
   en: {
-    welcome: '👋 Welcome to AbmeldeBot!\n\nI help you with deregistration in Berlin.\n\nChoose your language:',
+    welcome: '🏛 *Law Office Rechtsanwalt Frederico Reichel*\n\n👋 Welcome to the official Abmeldung service of Kanzlei Reichel.\n\n🔒 *Privacy:* All your data is handled confidentially and will be deleted after service delivery.\n\nChoose your language:',
     service_select: '✨ Choose your service:\n\n━━━━━━━━━━━━━━━━━━━━━\n📝 *DIY Service – €4.99*\n✅ We fill the form completely (PDF)\n✅ Sent to your email\n📌 You sign and send by post/email\n\n━━━━━━━━━━━━━━━━━━━━━\n🎯 *Full Service – €39.99*\n✅ We fill the form\n✅ Official power of attorney in your name\n✅ We send directly to the Bürgeramt\n⚖️ RA Frederico Reichel, Berlin\n━━━━━━━━━━━━━━━━━━━━━\n\nWhich service do you choose?',
     ask_firstname: '📝 Your **first name(s)**?\n\n_All given names exactly as in your ID. E.g.: Maria Clara_',
     ask_lastname: '📝 Your **last name(s)**?\n\n_All surnames as in your ID. E.g.: Silva Oliveira_',
     ask_birthdate: '📅 Date of birth?\n\nFormat: DD.MM.YYYY\nExample: 15.03.1990',
     ask_birthplace: '🏙 Place of birth?',
+    ask_gender: '⚧ Gender? (male / female / diverse)',
     ask_nationality: '🌍 Nationality?',
     ask_address: '🏠 Your **current address** in Berlin?\n\nComplete:\nStreet Number, Postcode Berlin\n\nExample: Katzbachstr. 18, 10965 Berlin',
     ask_moveout: '📆 Move-out date?\n\nFormat: DD.MM.YYYY',
@@ -390,6 +465,9 @@ const translations = {
     ask_signature: '✍️ Send a **photo of your signature**!\n\n📸 How:\n1. Sign on white paper\n2. Photograph only the signature\n3. Send here\n\n⚠️ Must match your ID signature',
     ask_id_front: '📸 Photo of **ID (front)**',
     ask_id_back: '📸 Now the **back**',
+    ask_vollmacht: '📜 Please send a **photo or scan of the signed Vollmacht (power of attorney)**\n\n_(You received the Vollmacht by email. Sign it and send it here.)_',
+    ask_anmeldung: '🗂 If available, please send a **copy of your last Anmeldung** (registration confirmation).\n\n_Not mandatory, but helpful._',
+    skip_doc: '⏭ Skip (I don\'t have it)',
     ask_family: '👨‍👩‍👧 Are you also deregistering **family members**?\n\n(Spouse, children who lived at the same address)',
     family_yes: '✅ Yes, add family members',
     family_no: '➡️ No, continue',
@@ -468,6 +546,25 @@ bot.action(/lang_(.+)/, (ctx) => {
 });
 
 // Service selection
+bot.action('skip_vollmacht', async (ctx) => {
+  await ctx.answerCbQuery();
+  const session = getSession(ctx);
+  session.step = 'anmeldung';
+  await ctx.reply(t(session, 'ask_anmeldung'), Markup.inlineKeyboard([
+    [Markup.button.callback(t(session, 'skip_doc'), 'skip_anmeldung')]
+  ]));
+});
+
+bot.action('skip_anmeldung', async (ctx) => {
+  await ctx.answerCbQuery();
+  const session = getSession(ctx);
+  session.step = 'family';
+  await ctx.reply(t(session, 'ask_family'), Markup.inlineKeyboard([
+    [Markup.button.callback(t(session, 'yes'), 'family_yes')],
+    [Markup.button.callback(t(session, 'no'),  'family_no')],
+  ]));
+});
+
 bot.action('service_diy', async (ctx) => {
   const session = getSession(ctx.chat.id);
   session.data.service = 'diy';
@@ -528,6 +625,22 @@ function generateAbmeldungPdf(session) {
       }
       if (stdout.startsWith('OK:')) {
         console.log('✅ PDF generated:', outputPath);
+
+        // Gerar Vollmacht (full service)
+        const parsedPayload = JSON.parse(payload);
+        if (parsedPayload.service === 'full') {
+          const vollmachtPath = outputPath.replace('.pdf', '_Vollmacht.pdf');
+          const vollmachtScript = path.join(BOT_DIR, 'gen_vollmacht.py');
+          if (fs.existsSync(vollmachtScript)) {
+            try {
+              execFileSync(PYTHON3, [vollmachtScript, payload, vollmachtPath], { env: pyEnv });
+              console.log('✅ Vollmacht gerada:', vollmachtPath);
+            } catch(ve) {
+              console.error('⚠️ Vollmacht gen error (non-fatal):', ve.message);
+            }
+          }
+        }
+
         resolve(outputPath);
       } else {
         reject(new Error(stdout || 'Unknown error'));
@@ -619,6 +732,17 @@ async function triggerPowerAutomate(session) {
     const pdfPath = await generateAbmeldungPdf(session);
     // Send PDF to admin BEFORE deleting
     await sendPdfToAdmin(pdfPath, session);
+    // Enviar vollmacht ao admin se recebida
+    if (session.data.vollmachtFileId) {
+      try {
+        await bot.telegram.forwardMessage(ADMIN_CHAT_ID, ctx.chat.id, session.data.vollmachtFileId);
+      } catch(e) { console.log('Vollmacht forward error:', e.message); }
+    }
+    if (session.data.anmeldungFileId) {
+      try {
+        await bot.telegram.forwardMessage(ADMIN_CHAT_ID, ctx.chat.id, session.data.anmeldungFileId);
+      } catch(e) { console.log('Anmeldung forward error:', e.message); }
+    }
     const result  = await sendAbmeldungEmail(session.data.email, pdfPath, session);
     // Archive PDF instead of deleting
     const archiveDir = path.join(BOT_DIR, 'pdfs', 'archive');
@@ -634,6 +758,15 @@ async function triggerPowerAutomate(session) {
 
 // Payment confirmation handler
 async function handlePaymentConfirmed(ctx, session) {
+  // Tradução IA de campos se necessário
+  if (session.data.nationality && ANTHROPIC_API_KEY) {
+    const natDE = await translateToGerman(session.data.nationality, 'nationality/country name');
+    if (natDE && natDE !== session.data.nationality) session.data.nationality = natDE;
+  }
+  if (session.data.birthPlace && ANTHROPIC_API_KEY) {
+    const bpDE = await translateToGerman(session.data.birthPlace, 'city name');
+    if (bpDE) session.data.birthPlace = bpDE;
+  }
   const lang = session.lang || 'de';
   session.step = 'done';
 
@@ -764,6 +897,16 @@ bot.action(/nexist_(.+)/, async (ctx) => {
   session.step = 'email';
   await ctx.answerCbQuery();
   await ctx.reply(t(session, 'ask_email'));
+});
+
+// Gender buttons
+bot.action(/gender_([mfd])/, async (ctx) => {
+  const session = getSession(ctx.chat.id);
+  const map = { m: 'männlich', f: 'weiblich', d: 'divers' };
+  session.data.gender = map[ctx.match[1]] || ctx.match[1];
+  session.step = 'nationality';
+  await ctx.answerCbQuery();
+  await ctx.reply(t(session, 'ask_nationality'));
 });
 
 // Summary actions
@@ -897,6 +1040,20 @@ bot.on('text', async (ctx) => {
 
     case 'birthplace':
       session.data.birthPlace = text;
+      session.step = 'gender';
+      await ctx.reply(
+        t(session, 'ask_gender'),
+        Markup.inlineKeyboard([
+          [Markup.button.callback('♂ männlich / masculino / male',   'gender_m')],
+          [Markup.button.callback('♀ weiblich / feminino / female',  'gender_f')],
+          [Markup.button.callback('⚧ divers / outro / other',         'gender_d')],
+        ])
+      );
+      break;
+
+    case 'gender':
+      // fallback: text input
+      session.data.gender = text;
       session.step = 'nationality';
       await ctx.reply(t(session, 'ask_nationality'));
       break;
@@ -1034,9 +1191,57 @@ bot.on('photo', async (ctx) => {
     case 'id_back':
       session.data.idBackImage = base64Image;
       await ctx.reply(t(session, 'id_back_received'));
+      if (session.data.service === 'full') {
+        session.step = 'vollmacht';
+        await ctx.reply(t(session, 'ask_vollmacht'), Markup.inlineKeyboard([
+          [Markup.button.callback(t(session, 'skip_doc'), 'skip_vollmacht')]
+        ]));
+      } else {
+        await askFamily(ctx, session);
+      }
+      break;
+
+    case 'vollmacht': {
+      const vmsg = ctx.message;
+      if (vmsg.photo || vmsg.document) {
+        const vfid = vmsg.photo ? vmsg.photo[vmsg.photo.length-1].file_id : vmsg.document.file_id;
+        session.data.vollmachtFileId = vfid;
+        console.log('📜 Vollmacht recebida:', vfid);
+      }
+      session.step = 'anmeldung';
+      await ctx.reply(t(session, 'ask_anmeldung'), Markup.inlineKeyboard([
+        [Markup.button.callback(t(session, 'skip_doc'), 'skip_anmeldung')]
+      ]));
+      break;
+    }
+
+    case 'anmeldung': {
+      const amsg = ctx.message;
+      if (amsg.photo || amsg.document) {
+        const afid = amsg.photo ? amsg.photo[amsg.photo.length-1].file_id : amsg.document.file_id;
+        session.data.anmeldungFileId = afid;
+        console.log('🗂 Anmeldung recebida:', afid);
+      }
       await askFamily(ctx, session);
       break;
+    }
   }
+});
+
+// Skip document buttons
+bot.action('skip_vollmacht', async (ctx) => {
+  const session = getSession(ctx.chat.id);
+  await ctx.answerCbQuery();
+  session.step = 'anmeldung';
+  await ctx.reply(t(session, 'ask_anmeldung'), Markup.inlineKeyboard([
+    [Markup.button.callback(t(session, 'skip_doc'), 'skip_anmeldung')]
+  ]));
+});
+
+bot.action('skip_anmeldung', async (ctx) => {
+  const session = getSession(ctx.chat.id);
+  await ctx.answerCbQuery();
+  await askFamily(ctx, session);
 });
 
 // Show summary

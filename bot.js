@@ -462,9 +462,9 @@ function generateAbmeldungPdf(session) {
       FamilyMembers:        data.familyMembers || [],
     });
 
-    const PYTHON3 = '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3';
+    const PYTHON3 = process.env.PYTHON_PATH || 'python3';
     const scriptPath = path.join(BOT_DIR, 'fill_abmeldung.py');
-    const pyEnv = { ...process.env, PYTHONPATH: '/Users/FredHome/Library/Python/3.11/lib/python/site-packages' };
+    const pyEnv = { ...process.env };
     execFile(PYTHON3, [scriptPath, payload, outputPath], { env: pyEnv }, (err, stdout, stderr) => {
       if (err) {
         console.error('❌ fill_abmeldung.py error:', stderr);

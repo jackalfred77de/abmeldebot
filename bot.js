@@ -1191,6 +1191,7 @@ bot.on('photo', async (ctx) => {
     case 'id_back':
       session.data.idBackImage = base64Image;
       await ctx.reply(t(session, 'id_back_received'));
+      // Após ID: pedir Vollmacht (Full) ou ir para familiares (DIY)
       if (session.data.service === 'full') {
         session.step = 'vollmacht';
         await ctx.reply(t(session, 'ask_vollmacht'), Markup.inlineKeyboard([
@@ -1208,20 +1209,7 @@ bot.on('photo', async (ctx) => {
         session.data.vollmachtFileId = vfid;
         console.log('📜 Vollmacht recebida:', vfid);
       }
-      session.step = 'anmeldung';
-      await ctx.reply(t(session, 'ask_anmeldung'), Markup.inlineKeyboard([
-        [Markup.button.callback(t(session, 'skip_doc'), 'skip_anmeldung')]
-      ]));
-      break;
-    }
-
-    case 'anmeldung': {
-      const amsg = ctx.message;
-      if (amsg.photo || amsg.document) {
-        const afid = amsg.photo ? amsg.photo[amsg.photo.length-1].file_id : amsg.document.file_id;
-        session.data.anmeldungFileId = afid;
-        console.log('🗂 Anmeldung recebida:', afid);
-      }
+      // Após Vollmacht: ir directo para familiares (sem pedir Anmeldung)
       await askFamily(ctx, session);
       break;
     }
@@ -1232,15 +1220,7 @@ bot.on('photo', async (ctx) => {
 bot.action('skip_vollmacht', async (ctx) => {
   const session = getSession(ctx.chat.id);
   await ctx.answerCbQuery();
-  session.step = 'anmeldung';
-  await ctx.reply(t(session, 'ask_anmeldung'), Markup.inlineKeyboard([
-    [Markup.button.callback(t(session, 'skip_doc'), 'skip_anmeldung')]
-  ]));
-});
-
-bot.action('skip_anmeldung', async (ctx) => {
-  const session = getSession(ctx.chat.id);
-  await ctx.answerCbQuery();
+  // Pular Vollmacht: ir directo para familiares
   await askFamily(ctx, session);
 });
 

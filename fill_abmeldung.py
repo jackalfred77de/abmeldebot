@@ -11,7 +11,7 @@ BLANK_PDF  = os.path.join(SCRIPT_DIR, "abmeldung_blank.pdf")
 NATIONALITY_MAP = {
     'brasil':'brasilianisch','brasileira':'brasilianisch','brasileiro':'brasilianisch','brazil':'brasilianisch','brazilian':'brasilianisch',
     'portugal':'portugiesisch','portuguesa':'portugiesisch','português':'portugiesisch','portuguese':'portugiesisch',
-    'alemanha':'deutsch','alemão':'deutsch','alemã':'deutsch','germany':'deutsch','german':'deutsch',
+    'alemanha':'deutsch','alemão':'deutsch','alemã':'deutsch','alema':'deutsch','alemão':'deutsch','germany':'deutsch','german':'deutsch','deutsch':'deutsch',
     'italia':'italienisch','itália':'italienisch','italiana':'italienisch','italy':'italienisch','italian':'italienisch',
     'espanha':'spanisch','espanhola':'spanisch','spain':'spanisch','spanish':'spanisch',
     'franca':'französisch','frança':'französisch','france':'französisch','french':'französisch',
@@ -168,12 +168,18 @@ def fill_pdf(data: dict, output_path: str):
     with open(tmp_path,"wb") as f:
         writer.write(f)
 
-    # fitz: nome impresso + assinatura imagem
+    # fitz: data + nome na mesma linha, mesma fonte; assinatura imagem sem artefactos
     doc = fitz.open(tmp_path)
     page = doc[0]
+
+    # Limpar área do campo Datum (apagar conteúdo do widget visualmente)
+    # A área do campo de data+assinatura é aprox. y=794..807
+    page.draw_rect(fitz.Rect(310, 792, 578, 810), color=(1,1,1), fill=(1,1,1))
+
     name_text = f"{vorname} {nachname}".strip()
-    if name_text:
-        page.insert_text(fitz.Point(312, 808), name_text, fontsize=7, color=(0,0,0))
+    # Data e nome na mesma linha, mesma fonte (size 8)
+    datum_name = f"{datum}    {name_text}"
+    page.insert_text(fitz.Point(312, 805), datum_name, fontsize=8, color=(0,0,0))
 
     sig_b64 = data.get("SignaturBase64","")
     if sig_b64:
@@ -183,7 +189,8 @@ def fill_pdf(data: dict, output_path: str):
         sig_tmp = output_path + ".sig.png"
         with open(sig_tmp,"wb") as f:
             f.write(sig_bytes)
-        sig_rect = fitz.Rect(312, 775, 490, 800)
+        # Assinatura numa área clara, sem sobreposição com texto
+        sig_rect = fitz.Rect(420, 770, 576, 800)
         page.insert_image(sig_rect, filename=sig_tmp, keep_proportion=True)
         try: os.unlink(sig_tmp)
         except: pass

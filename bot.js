@@ -532,54 +532,65 @@ function generateAbmeldungPdf(session) {
   });
 }
 
-// Send PDF by email
+// Microsoft Graph Email
+async function getGraphToken() {
+  const url = `https://login.microsoftonline.com/${GRAPH_TENANT_ID}/oauth2/v2.0/token`;
+  const params = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: GRAPH_CLIENT_ID,
+    client_secret: GRAPH_CLIENT_SECRET,
+    scope: 'https://graph.microsoft.com/.default',
+  });
+  const resp = await axios.post(url, params.toString(), {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    timeout: 15000,
+  });
+  return resp.data.access_token;
+}
+
 async function sendAbmeldungEmail(toEmail, pdfPath, session) {
-  if (!SMTP_HOST) {
-    console.log('⚠️  SMTP not configured — skipping email (simulation mode)');
+  if (!GRAPH_TENANT_ID || !GRAPH_CLIENT_ID || !GRAPH_CLIENT_SECRET) {
+    console.log('Graph API nao configurada - simulando email');
     return { success: true, simulated: true };
   }
-
   const { data } = session;
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
-
   const firstName = data.firstName || '';
   const lastName  = data.lastName  || '';
   const orderId   = data.orderId   || '';
   const isDiy     = data.service === 'diy';
-
-  await transporter.sendMail({
-    from: `"RA Frederico Reichel – Abmeldung" <${SMTP_FROM}>`,
-    to:   toEmail,
-    replyTo: FIRM_EMAIL,
-    subject: `Ihre Abmeldung – Bestellung ${orderId}`,
-    html: `
-      <p>Sehr geehrte/r ${firstName} ${lastName},</p>
-      <p>im Anhang finden Sie Ihr ausgefülltes Abmeldeformular (Bestellnr.: <strong>${orderId}</strong>).</p>
-      ${isDiy ? `
-      <p><strong>Nächste Schritte (DIY Service):</strong><br/>
-      1. Formular ausdrucken<br/>
-      2. Unterschreiben<br/>
-      3. Per Post oder E-Mail ans zuständige Bürgeramt senden</p>
-      ` : `
-      <p>Wir kümmern uns um die Einreichung beim Bürgeramt. Sie müssen nichts weiter tun.</p>
-      `}
-      <p>Bei Fragen stehen wir Ihnen gerne zur Verfügung.</p>
-      <p>Mit freundlichen Grüßen,<br/>
-      <strong>Rechtsanwalt Frederico Reichel</strong><br/>
-      ${FIRM_ADDRESS}<br/>
-      <a href="mailto:${FIRM_EMAIL}">${FIRM_EMAIL}</a></p>
-    `,
-    attachments: [{
-      filename: `Abmeldung_${orderId}.pdf`,
-      path:     pdfPath,
-    }],
-  });
-
+  const pdfBase64 = fs.readFileSync(pdfPath).toString('base64');
+  const stepsHtml = isDiy
+    ? '<p><strong>Naechste Schritte (DIY):</strong><br/>1. Formular ausdrucken<br/>2. Unterschreiben<br/>3. Ans Buergeramt senden</p>'
+    : '<p>Wir kuemmern uns um die Einreichung beim Buergeramt.</p>';
+  const htmlBody = '<p>Sehr geehrte/r ' + firstName + ' ' + lastName + ',</p>' +
+    '<p>im Anhang finden Sie Ihr ausgefuelltes Abmeldeformular (Bestellnr.: <strong>' + orderId + '</strong>).</p>' +
+    stepsHtml +
+    '<p>Mit freundlichen Gruessen,<br/><strong>Rechtsanwalt Frederico Reichel</strong><br/>' +
+    FIRM_ADDRESS + '<br/><a href="mailto:' + FIRM_EMAIL + '">' + FIRM_EMAIL + '</a></p>';
+  const token = await getGraphToken();
+  await axios.post(
+    'https://graph.microsoft.com/v1.0/users/' + GRAPH_SENDER + '/sendMail',
+    {
+      message: {
+        subject: 'Ihre Abmeldung - Bestellung ' + orderId,
+        body: { contentType: 'HTML', content: htmlBody },
+        toRecipients: [{ emailAddress: { address: toEmail } }],
+        replyTo: [{ emailAddress: { address: FIRM_EMAIL } }],
+        attachments: [{
+          '@odata.type': '#microsoft.graph.fileAttachment',
+          name: 'Abmeldung_' + orderId + '.pdf',
+          contentType: 'application/pdf',
+          contentBytes: pdfBase64,
+        }],
+      },
+      saveToSentItems: true,
+    },
+    {
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      timeout: 30000,
+    }
+  );
+  console.log('Email enviado via Graph API para', toEmail);
   return { success: true };
 }
 

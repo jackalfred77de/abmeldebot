@@ -73,6 +73,14 @@ def set_checkbox(annots, name, checked):
         if str(a.get('/T') or '') == name:
             a.update({NameObject('/V'): val, NameObject('/AS'): val, NameObject('/DV'): val})
 
+def resolve_annots(page):
+    """Resolve IndirectObject para obter a lista real de anotações."""
+    from pypdf.generic import IndirectObject
+    raw = page.get('/Annots')
+    if raw is None:
+        return []
+    return raw.get_object() if isinstance(raw, IndirectObject) else raw
+
 def fill_pdf(data: dict, output_path: str):
     reader = PdfReader(BLANK_PDF)
     writer = PdfWriter()
@@ -92,6 +100,7 @@ def fill_pdf(data: dict, output_path: str):
     nachname = data.get("Nachname","")
     datum    = data.get("Datum","")
 
+    # --- Preencher campos de texto usando update_page_form_field_values (gera aparências visuais) ---
     text_fields = {
         "Tag des Auszugs":                                                            data.get("Auszugsdatum",""),
         "Postleitzahl Gemeinde Ortsteil bisherige Wohnung":                           plz_bezirk,
@@ -107,7 +116,26 @@ def fill_pdf(data: dict, output_path: str):
         "Person 1 Religionsgesellschaft":                                             "",
         "Person 1 Staatsangehörigkeiten":                                             nat,
         "Person 1 Ordens- Künstlername":                                              "",
-        "Datum, Unterschirft":                                                        "",  # preenchido via fitz abaixo
+        # Limpar TODOS os campos de família por padrão (evitar dados residuais)
+        "Person 2 Familienmitglied ist Familienname ggf Doktorgrad":                  "",
+        "Person 2 Passname":                                                          "",
+        "Person 2 Familienmitglied ist Vornamen Rufnamen unterstreichen":             "",
+        "Person 2 Familienmitglied ist Geburtsname":                                  "",
+        "Person 2 Familienmitglied istGeschlecht":                                    "",
+        "Person 2 Familienmitglied ist Tag Ort Land der Geburt":                      "",
+        "Person 2 Familienmitglied ist Religionsgesellschaft":                        "",
+        "Person 2 Familienmitglied ist Staatsangehörigkeiten":                        "",
+        "Person 2 Familienmitglied ist Ordens- Künstlername":                         "",
+        "Person 3 Familienmitglied ist Familienname ggf Doktorgrad":                  "",
+        "Person 3 Passname":                                                          "",
+        "Person 3 Familienmitglied ist Vornamen Rufnamen unterstreichen":             "",
+        "Person 3 Familienmitglied ist Geburtsname":                                  "",
+        "Person 3 Familienmitglied ist Geschlecht":                                   "",
+        "Person 3 Familienmitglied ist Tag Ort Land der Geburt":                      "",
+        "Person 3 Familienmitglied ist Religionsgesellschaft":                        "",
+        "Person 3 Familienmitglied istStaatsangehörigkeiten":                         "",
+        "Person 3 Familienmitglied ist OrdensKünstlername":                           "",
+        # NÃO incluir "Datum, Unterschirft" aqui — o campo será eliminado via fitz abaixo
     }
 
     bisherig = data.get("BisherigWohnung","alleinige").lower().strip()
@@ -129,23 +157,19 @@ def fill_pdf(data: dict, output_path: str):
         "ja, als Nebenwohnung":neue_existiert=="Nebenwohnung",
     }
 
-    for page in writer.pages:
-        annots = page.get('/Annots',[])
-        for name, value in text_fields.items():
-            set_field(annots, name, value)
-        for name, checked in checkboxes.items():
-            set_checkbox(annots, name, checked)
-
-    # Familiares (Person 2 e 3)
-    family_members = data.get('FamilyMembers',[])
+    # Familiares (Person 2 e 3) — só preenche se existirem
+    family_members = data.get('FamilyMembers', [])
     for idx, member in enumerate(family_members[:2]):
+        if not member or not str(member).strip():
+            continue
         n = idx + 2
-        parts = member.split(',')
-        name_raw = parts[0].strip()
-        dob_raw  = parts[1].strip() if len(parts)>1 else ''
-        name_parts = name_raw.rsplit(' ',1)
-        fn = name_parts[0] if len(name_parts)>1 else name_raw
-        ln = name_parts[1] if len(name_parts)>1 else ''
+        parts = str(member).split(',')
+        name_raw = parts[0].strip()       # ex: "Maria Silva"
+        dob_raw  = parts[1].strip() if len(parts) > 1 else ''
+        # Separar nome e sobrenome: última palavra = sobrenome
+        name_parts = name_raw.rsplit(' ', 1)
+        fn = name_parts[0].strip() if len(name_parts) > 1 else name_raw  # Vornamen
+        ln = name_parts[1].strip() if len(name_parts) > 1 else ''         # Familienname
         if n == 2:
             fam_fields = {
                 "Person 2 Familienmitglied ist Familienname ggf Doktorgrad": ln,
@@ -158,42 +182,77 @@ def fill_pdf(data: dict, output_path: str):
                 "Person 3 Familienmitglied ist Vornamen Rufnamen unterstreichen": fn,
                 "Person 3 Familienmitglied ist Tag Ort Land der Geburt": dob_raw,
             }
-        for page in writer.pages:
-            annots = page.get('/Annots',[])
-            for fname, fval in fam_fields.items():
-                set_field(annots, fname, fval)
+        text_fields.update(fam_fields)
+
+    # Aplicar todos os campos de texto de uma vez (gera aparências visuais corretamente)
+    writer.update_page_form_field_values(writer.pages[0], text_fields)
+
+    # Aplicar checkboxes via set_checkbox (update_page_form_field_values não lida bem com checkboxes)
+    for page in writer.pages:
+        annots = resolve_annots(page)
+        for name, checked in checkboxes.items():
+            set_checkbox(annots, name, checked)
 
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     tmp_path = output_path + ".tmp.pdf"
     with open(tmp_path,"wb") as f:
         writer.write(f)
 
-    # fitz: data + nome na mesma linha, mesma fonte; assinatura imagem sem artefactos
+    # --- fitz: eliminar campo de assinatura do PDF + desenhar assinatura limpa ---
     doc = fitz.open(tmp_path)
     page = doc[0]
 
-    # Apagar campo Datum via widget (deixar vazio no pypdf, campo foi preenchido com "")
-    # Cobrir zona do widget com branco para garantir que não renderiza sobras
-    page.draw_rect(fitz.Rect(310, 790, 580, 814), color=(1,1,1), fill=(1,1,1))
+    # Remover TODOS os widgets/anotações da zona de assinatura para eliminar a assinatura azul do formulário
+    widgets_to_remove = []
+    for widget in page.widgets():
+        r = widget.rect
+        # A caixa de assinatura fica aproximadamente entre y=755 e y=820
+        if r.y0 > 750 and r.x0 > 300:
+            widgets_to_remove.append(widget)
+    for w in widgets_to_remove:
+        page.delete_widget(w)
 
-    name_text = f"{vorname} {nachname}".strip()
-    # Data e nome na mesma linha, mesma fonte (size 8)
-    datum_name = f"{datum}    {name_text}"
-    page.insert_text(fitz.Point(312, 806), datum_name, fontsize=8, color=(0,0,0))
+    # Cobrir apenas o interior da caixa de assinatura (entre y=772 e y=808)
+    # Não cobrir y=771 (linha do label) nem y=808 (linha base) para preservar a estrutura
+    page.draw_rect(fitz.Rect(310, 772, 578, 808), color=(1,1,1), fill=(1,1,1))
 
     sig_b64 = data.get("SignaturBase64","")
     if sig_b64:
+        # Decodificar base64
         if "," in sig_b64:
             sig_b64 = sig_b64.split(",",1)[1]
         sig_bytes = base64.b64decode(sig_b64)
-        sig_tmp = output_path + ".sig.png"
-        with open(sig_tmp,"wb") as f:
-            f.write(sig_bytes)
-        # Assinatura numa área clara, sem sobreposição com texto
-        sig_rect = fitz.Rect(420, 770, 576, 800)
-        page.insert_image(sig_rect, filename=sig_tmp, keep_proportion=True)
-        try: os.unlink(sig_tmp)
-        except: pass
+
+        # Tornar fundo branco transparente para evitar caixa preta
+        try:
+            from PIL import Image
+            import io
+            img = Image.open(io.BytesIO(sig_bytes)).convert("RGBA")
+            pixels = img.getdata()
+            new_pixels = []
+            for r, g, b, a in pixels:
+                if r > 200 and g > 200 and b > 200:
+                    new_pixels.append((255, 255, 255, 0))
+                else:
+                    new_pixels.append((r, g, b, a))
+            img.putdata(new_pixels)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            sig_bytes = buf.getvalue()
+        except Exception:
+            pass
+
+        # Assinatura: entre a linha do label (y=771) e o campo de data (y=794)
+        # Margem de 2pt acima e abaixo para não tocar nas linhas
+        sig_rect = fitz.Rect(315, 774, 570, 791)
+        page.insert_image(sig_rect, stream=sig_bytes, keep_proportion=True)
+
+    # Data e nome: dentro do campo de data (widget y=794-807), centrado em y=803
+    if datum:
+        page.insert_text(fitz.Point(315, 803), datum, fontsize=7.5, color=(0,0,0))
+    if vorname or nachname:
+        name_text = f"{vorname} {nachname}".strip()
+        page.insert_text(fitz.Point(365, 803), name_text, fontsize=7.5, color=(0,0,0))
 
     doc.save(output_path)
     doc.close()

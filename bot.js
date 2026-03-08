@@ -10,6 +10,7 @@ const { execFile, execFileSync } = require('child_process');
 const nodemailer = require('nodemailer');
 const path = require('path');
 const fs = require('fs');
+const SP = require('./sharepoint');
 
 // Configuration from environment variables
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -507,6 +508,7 @@ const translations = {
 
 // Commands
 bot.command('start', (ctx) => {
+  sessions.delete(ctx.chat.id); // sessão limpa em cada /start
   const session = createSession(ctx.chat.id);
   ctx.reply(
     translations.de.welcome,
@@ -546,24 +548,7 @@ bot.action(/lang_(.+)/, (ctx) => {
 });
 
 // Service selection
-bot.action('skip_vollmacht', async (ctx) => {
-  await ctx.answerCbQuery();
-  const session = getSession(ctx);
-  session.step = 'anmeldung';
-  await ctx.reply(t(session, 'ask_anmeldung'), Markup.inlineKeyboard([
-    [Markup.button.callback(t(session, 'skip_doc'), 'skip_anmeldung')]
-  ]));
-});
-
-bot.action('skip_anmeldung', async (ctx) => {
-  await ctx.answerCbQuery();
-  const session = getSession(ctx);
-  session.step = 'family';
-  await ctx.reply(t(session, 'ask_family'), Markup.inlineKeyboard([
-    [Markup.button.callback(t(session, 'yes'), 'family_yes')],
-    [Markup.button.callback(t(session, 'no'),  'family_no')],
-  ]));
-});
+// (skip_vollmacht e skip_anmeldung definidos abaixo, após askFamily)
 
 bot.action('service_diy', async (ctx) => {
   const session = getSession(ctx.chat.id);
@@ -626,14 +611,19 @@ function generateAbmeldungPdf(session) {
       if (stdout.startsWith('OK:')) {
         console.log('✅ PDF generated:', outputPath);
 
-        // Gerar Vollmacht (full service)
-        const parsedPayload = JSON.parse(payload);
-        if (parsedPayload.service === 'full') {
+        // Gerar Vollmacht (sempre, para full service)
+        if (data.service === 'full') {
           const vollmachtPath = outputPath.replace('.pdf', '_Vollmacht.pdf');
           const vollmachtScript = path.join(BOT_DIR, 'gen_vollmacht.py');
           if (fs.existsSync(vollmachtScript)) {
             try {
-              execFileSync(PYTHON3, [vollmachtScript, payload, vollmachtPath], { env: pyEnv });
+              const vollmachtData = JSON.stringify({
+                Vorname:  data.firstName,
+                Nachname: data.lastName,
+                Bezirk:   data.bezirk || 'Berlin',
+              });
+              execFileSync(PYTHON3, [vollmachtScript, vollmachtData, vollmachtPath], { env: pyEnv });
+              session._vollmachtPath = vollmachtPath;
               console.log('✅ Vollmacht gerada:', vollmachtPath);
             } catch(ve) {
               console.error('⚠️ Vollmacht gen error (non-fatal):', ve.message);
@@ -676,6 +666,40 @@ async function sendAbmeldungEmail(toEmail, pdfPath, session) {
   const orderId   = data.orderId   || '';
   const isDiy     = data.service === 'diy';
   const pdfBase64 = fs.readFileSync(pdfPath).toString('base64');
+  // Vollmacht como segundo anexo (full service)
+  const attachments = [{
+    '@odata.type': '#microsoft.graph.fileAttachment',
+    name: 'Abmeldung_' + orderId + '.pdf',
+    contentType: 'application/pdf',
+    contentBytes: pdfBase64,
+  }];
+  if (!isDiy && session._vollmachtPath && fs.existsSync(session._vollmachtPath)) {
+    attachments.push({
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name: 'Vollmacht_' + orderId + '.pdf',
+      contentType: 'application/pdf',
+      contentBytes: fs.readFileSync(session._vollmachtPath).toString('base64'),
+    });
+  }
+  // Fotos do documento de identidade (full service)
+  if (!isDiy && data.idFrontImage) {
+    const idFrontBase64 = data.idFrontImage.includes(',') ? data.idFrontImage.split(',')[1] : data.idFrontImage;
+    attachments.push({
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name: 'ID_Frente_' + orderId + '.jpg',
+      contentType: 'image/jpeg',
+      contentBytes: idFrontBase64,
+    });
+  }
+  if (!isDiy && data.idBackImage) {
+    const idBackBase64 = data.idBackImage.includes(',') ? data.idBackImage.split(',')[1] : data.idBackImage;
+    attachments.push({
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name: 'ID_Verso_' + orderId + '.jpg',
+      contentType: 'image/jpeg',
+      contentBytes: idBackBase64,
+    });
+  }
   const stepsHtml = isDiy
     ? '<p><strong>Naechste Schritte (DIY):</strong><br/>1. Formular ausdrucken<br/>2. Unterschreiben<br/>3. Ans Buergeramt senden</p>'
     : '<p>Wir kuemmern uns um die Einreichung beim Buergeramt.</p>';
@@ -693,12 +717,7 @@ async function sendAbmeldungEmail(toEmail, pdfPath, session) {
         body: { contentType: 'HTML', content: htmlBody },
         toRecipients: [{ emailAddress: { address: toEmail } }],
         replyTo: [{ emailAddress: { address: FIRM_EMAIL } }],
-        attachments: [{
-          '@odata.type': '#microsoft.graph.fileAttachment',
-          name: 'Abmeldung_' + orderId + '.pdf',
-          contentType: 'application/pdf',
-          contentBytes: pdfBase64,
-        }],
+        attachments,
       },
       saveToSentItems: true,
     },
@@ -732,18 +751,27 @@ async function triggerPowerAutomate(session) {
     const pdfPath = await generateAbmeldungPdf(session);
     // Send PDF to admin BEFORE deleting
     await sendPdfToAdmin(pdfPath, session);
-    // Enviar vollmacht ao admin se recebida
-    if (session.data.vollmachtFileId) {
+    // Enviar Vollmacht gerada ao admin (full service)
+    if (session._vollmachtPath && fs.existsSync(session._vollmachtPath)) {
       try {
-        await bot.telegram.forwardMessage(ADMIN_CHAT_ID, ctx.chat.id, session.data.vollmachtFileId);
-      } catch(e) { console.log('Vollmacht forward error:', e.message); }
+        await bot.telegram.sendDocument(
+          ADMIN_CHAT_ID,
+          { source: session._vollmachtPath, filename: `Vollmacht_${session.data.orderId}.pdf` },
+          { caption: `📜 Vollmacht — ${session.data.firstName} ${session.data.lastName}` }
+        );
+      } catch(e) { console.log('Vollmacht admin error:', e.message); }
     }
     if (session.data.anmeldungFileId) {
       try {
-        await bot.telegram.forwardMessage(ADMIN_CHAT_ID, ctx.chat.id, session.data.anmeldungFileId);
+        await bot.telegram.sendDocument(ADMIN_CHAT_ID, session.data.anmeldungFileId);
       } catch(e) { console.log('Anmeldung forward error:', e.message); }
     }
     const result  = await sendAbmeldungEmail(session.data.email, pdfPath, session);
+
+    // ── SharePoint: upload de documentos + ledger ──────────────────────────
+    SP.processCaseToSharePoint(session, pdfPath, session._vollmachtPath || null, bot)
+      .catch(e => console.error('SP non-fatal error:', e.message));
+
     // Archive PDF instead of deleting
     const archiveDir = path.join(BOT_DIR, 'pdfs', 'archive');
     if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
@@ -1120,19 +1148,16 @@ bot.on('text', async (ctx) => {
         return;
       }
       session.data.email = text;
-      if (session.data.service === 'full') {
-        session.step = 'phone';
-        await ctx.reply(t(session, 'ask_phone'));
-      } else {
-        // DIY: familiares antes da assinatura
-        await askFamily(ctx, session);
-      }
+      // Sempre pedir telefone (DIY e Full), depois ID
+      session.step = 'phone';
+      await ctx.reply(t(session, 'ask_phone'));
       break;
 
     case 'phone':
       session.data.phone = text;
-      // Full: familiares antes da assinatura
-      await askFamily(ctx, session);
+      // Full e DIY: pedir documento de identidade
+      session.step = 'id_front';
+      await ctx.reply(t(session, 'ask_id_front'));
       break;
 
     case 'family_name':
@@ -1182,34 +1207,32 @@ bot.on('photo', async (ctx) => {
       break;
 
     case 'id_front':
-      session.data.idFrontImage = base64Image;
+      session.data.idFrontImage  = base64Image;
+      session.data.idFrontFileId = photo.file_id; // para upload SharePoint
       await ctx.reply(t(session, 'id_front_received'));
       session.step = 'id_back';
       await ctx.reply(t(session, 'ask_id_back'));
       break;
 
     case 'id_back':
-      session.data.idBackImage = base64Image;
+      session.data.idBackImage  = base64Image;
+      session.data.idBackFileId = photo.file_id; // para upload SharePoint
       await ctx.reply(t(session, 'id_back_received'));
-      // Após ID: pedir Vollmacht (Full) ou ir para familiares (DIY)
-      if (session.data.service === 'full') {
-        session.step = 'vollmacht';
-        await ctx.reply(t(session, 'ask_vollmacht'), Markup.inlineKeyboard([
-          [Markup.button.callback(t(session, 'skip_doc'), 'skip_vollmacht')]
-        ]));
-      } else {
-        await askFamily(ctx, session);
-      }
+      // Após ID: pedir Anmeldung anterior (opcional) para todos
+      session.step = 'anmeldung';
+      await ctx.reply(t(session, 'ask_anmeldung'), Markup.inlineKeyboard([
+        [Markup.button.callback(t(session, 'skip_doc'), 'skip_anmeldung')]
+      ]));
       break;
 
-    case 'vollmacht': {
-      const vmsg = ctx.message;
-      if (vmsg.photo || vmsg.document) {
-        const vfid = vmsg.photo ? vmsg.photo[vmsg.photo.length-1].file_id : vmsg.document.file_id;
-        session.data.vollmachtFileId = vfid;
-        console.log('📜 Vollmacht recebida:', vfid);
+    case 'anmeldung': {
+      const amsg = ctx.message;
+      const afid = amsg.photo ? amsg.photo[amsg.photo.length-1].file_id : null;
+      if (afid) {
+        session.data.anmeldungFileId = afid;
+        console.log('🗂 Anmeldung recebida:', afid);
+        await ctx.reply('✅ Anmeldung recebida!');
       }
-      // Após Vollmacht: ir directo para familiares (sem pedir Anmeldung)
       await askFamily(ctx, session);
       break;
     }
@@ -1217,10 +1240,9 @@ bot.on('photo', async (ctx) => {
 });
 
 // Skip document buttons
-bot.action('skip_vollmacht', async (ctx) => {
+bot.action('skip_anmeldung', async (ctx) => {
   const session = getSession(ctx.chat.id);
   await ctx.answerCbQuery();
-  // Pular Vollmacht: ir directo para familiares
   await askFamily(ctx, session);
 });
 
@@ -1273,26 +1295,35 @@ bot.catch((err, ctx) => {
 });
 
 
-// ─── LAUNCH COM RETRY ──────────────────────────────────────────────────────
+// ─── LAUNCH ─────────────────────────────────────────────────────────────
+// Polling timeout no polling.js está patchado para 10s.
+// O restart_delay do PM2 é 40s (> 10s), então ao reiniciar a sessão já expirou.
 async function startBot() {
+  console.log('🤖 AbmeldeBot iniciando...');
+
   try {
     await bot.telegram.deleteWebhook({ drop_pending_updates: true });
     console.log('🧹 Webhook limpo');
-  } catch(e) { console.log('Webhook cleanup:', e.message); }
+  } catch(e) { /* ignora */ }
+
   try {
-    await bot.launch();
+    console.log('🚀 Lançando bot...');
+    await bot.launch({
+      dropPendingUpdates: true,
+      allowedUpdates: ['message', 'callback_query'],
+    });
     console.log('✅ AbmeldeBot gestartet!');
     console.log('📱 Jetzt in Telegram: /start');
   } catch(err) {
     if (err.message && err.message.includes('409')) {
-      console.log('⚠️ Conflict 409 — aguardando 15s...');
-      setTimeout(startBot, 15000);
-    } else {
-      console.error('❌ Erro:', err.message);
-      setTimeout(startBot, 5000);
+      console.log('⚠️ 409 — saindo. PM2 reinicia após restart_delay=45s...');
+      process.exit(0);
     }
+    console.error('❌ Erro:', err.message);
+    process.exit(0);
   }
 }
+
 startBot();
-process.once('SIGINT',  () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT',  () => { console.log('SIGINT'); bot.stop('SIGINT'); });
+process.once('SIGTERM', () => { console.log('SIGTERM'); bot.stop('SIGTERM'); });

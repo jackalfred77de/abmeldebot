@@ -639,6 +639,61 @@ function generateAbmeldungPdf(session) {
   });
 }
 
+// Gerar PDF com frente+verso do documento de identidade
+async function buildIdPdf(frontBase64, backBase64, orderId) {
+  const tmpDir = path.join(BOT_DIR, 'pdfs');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+
+  // Guardar imagens temporariamente
+  const paths = [];
+  for (const [label, b64] of [['front', frontBase64], ['back', backBase64]]) {
+    if (!b64) continue;
+    const raw = b64.includes(',') ? b64.split(',')[1] : b64;
+    const imgPath = path.join(tmpDir, `id_${label}_${orderId}.jpg`);
+    fs.writeFileSync(imgPath, Buffer.from(raw, 'base64'));
+    paths.push(imgPath);
+  }
+  if (paths.length === 0) return null;
+
+  const outPath = path.join(tmpDir, `ID_${orderId}.pdf`);
+  const PYTHON3 = process.env.PYTHON_PATH || 'python3';
+
+  // Script Python inline para criar PDF com as imagens
+  const pyScript = `
+import sys, fitz
+args = sys.argv[1:]
+out = args[-1]
+imgs = args[:-1]
+doc = fitz.open()
+for img_path in imgs:
+    img_doc = fitz.open(img_path)
+    pdfbytes = img_doc.convert_to_pdf()
+    img_pdf = fitz.open('pdf', pdfbytes)
+    doc.insert_pdf(img_pdf)
+for i,img_path in enumerate(imgs):
+    page = doc[i]
+    page.set_mediabox(fitz.Rect(0,0,595,842))
+doc.save(out)
+print('OK')
+`;
+  const scriptPath = path.join(tmpDir, `build_id_${orderId}.py`);
+  fs.writeFileSync(scriptPath, pyScript);
+
+  await new Promise((resolve, reject) => {
+    execFile(PYTHON3, [scriptPath, ...paths, outPath], { timeout: 30000 }, (err, stdout, stderr) => {
+      // limpar ficheiros temp
+      try { fs.unlinkSync(scriptPath); } catch(_) {}
+      paths.forEach(p => { try { fs.unlinkSync(p); } catch(_) {} });
+      if (err) reject(new Error(stderr || err.message));
+      else resolve();
+    });
+  });
+
+  const pdfBytes = fs.readFileSync(outPath);
+  try { fs.unlinkSync(outPath); } catch(_) {}
+  return pdfBytes;
+}
+
 // Microsoft Graph Email
 async function getGraphToken() {
   const url = `https://login.microsoftonline.com/${GRAPH_TENANT_ID}/oauth2/v2.0/token`;
@@ -681,24 +736,21 @@ async function sendAbmeldungEmail(toEmail, pdfPath, session) {
       contentBytes: fs.readFileSync(session._vollmachtPath).toString('base64'),
     });
   }
-  // Fotos do documento de identidade (full service)
-  if (!isDiy && data.idFrontImage) {
-    const idFrontBase64 = data.idFrontImage.includes(',') ? data.idFrontImage.split(',')[1] : data.idFrontImage;
-    attachments.push({
-      '@odata.type': '#microsoft.graph.fileAttachment',
-      name: 'ID_Frente_' + orderId + '.jpg',
-      contentType: 'image/jpeg',
-      contentBytes: idFrontBase64,
-    });
-  }
-  if (!isDiy && data.idBackImage) {
-    const idBackBase64 = data.idBackImage.includes(',') ? data.idBackImage.split(',')[1] : data.idBackImage;
-    attachments.push({
-      '@odata.type': '#microsoft.graph.fileAttachment',
-      name: 'ID_Verso_' + orderId + '.jpg',
-      contentType: 'image/jpeg',
-      contentBytes: idBackBase64,
-    });
+  // Fotos do documento de identidade → PDF combinado (full service)
+  if (!isDiy && (data.idFrontImage || data.idBackImage)) {
+    try {
+      const idPdfBytes = await buildIdPdf(data.idFrontImage, data.idBackImage, orderId);
+      if (idPdfBytes) {
+        attachments.push({
+          '@odata.type': '#microsoft.graph.fileAttachment',
+          name: 'ID_' + orderId + '.pdf',
+          contentType: 'application/pdf',
+          contentBytes: idPdfBytes.toString('base64'),
+        });
+      }
+    } catch (e) {
+      console.error('⚠️ ID PDF build error:', e.message);
+    }
   }
   const stepsHtml = isDiy
     ? '<p><strong>Naechste Schritte (DIY):</strong><br/>1. Formular ausdrucken<br/>2. Unterschreiben<br/>3. Ans Buergeramt senden</p>'

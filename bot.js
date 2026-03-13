@@ -26,8 +26,8 @@ const GRAPH_CLIENT_ID     = process.env.GRAPH_CLIENT_ID     || '';
 const GRAPH_CLIENT_SECRET = process.env.GRAPH_CLIENT_SECRET || '';
 const GRAPH_SENDER        = process.env.GRAPH_SENDER        || 'buero@rafer.de';
 const ANTHROPIC_API_KEY   = process.env.ANTHROPIC_API_KEY   || '';
-const FIRM_ADDRESS  = 'Rechtsanwalt Frederico Reichel, Katzbachstr. 18, 10965 Berlin';
-const FIRM_EMAIL    = 'info@rafer.de';
+const FIRM_ADDRESS  = 'Katzbachstraße 18, 10965 Berlin';
+const FIRM_EMAIL    = 'abmeldung@rafer.de';
 const BOT_DIR       = __dirname;
 
 if (!BOT_TOKEN) {
@@ -669,9 +669,17 @@ imgs = args[:-1]
 doc = fitz.open()
 for img_path in imgs:
     page = doc.new_page(width=595, height=842)
-    margin = 30
-    rect = fitz.Rect(margin, margin, 595-margin, 842-margin)
-    page.insert_image(rect, filename=img_path, keep_proportion=True)
+    margin = 20
+    pix = fitz.open(img_path)[0].get_pixmap()
+    iw, ih = pix.width, pix.height
+    aw = 595 - 2*margin
+    ah = 842 - 2*margin
+    scale = min(aw/iw, ah/ih)
+    w, h = iw*scale, ih*scale
+    x0 = margin + (aw-w)/2
+    y0 = margin + (ah-h)/2
+    rect = fitz.Rect(x0, y0, x0+w, y0+h)
+    page.insert_image(rect, filename=img_path, keep_proportion=False)
 doc.save(out)
 print('OK')
 `;
@@ -760,8 +768,14 @@ async function sendAbmeldungEmail(toEmail, pdfPath, session) {
     stepsHtml +
     '<p>Mit freundlichen Gr\u00fc\u00dfen,</p>' +
     '<p><img src="data:image/png;base64,' + SIG_B64 + '" alt="Unterschrift" style="max-height:80px;"/></p>' +
-    '<p><strong>Rechtsanwalt Frederico Reichel</strong><br/>' +
-    FIRM_ADDRESS + '<br/><a href="mailto:' + FIRM_EMAIL + '">' + FIRM_EMAIL + '</a></p>';
+    '<p><strong>FREDERICO E. REICHEL</strong><br/>' +
+    '<strong>Rechtsanwalt</strong><br/>' +
+    'Katzbachstraße 18<br/>' +
+    '10965 Berlin<br/><br/>' +
+    'T&nbsp;&nbsp;&nbsp;&nbsp; +49 30 44312792<br/>' +
+    'Fx&nbsp;&nbsp; +49 30 75439509<br/>' +
+    'E&nbsp;&nbsp;&nbsp;&nbsp; <a href="mailto:abmeldung@rafer.de">abmeldung@rafer.de</a><br/>' +
+    'WhatsApp +49 155 60245902</p>';
   const token = await getGraphToken();
   await axios.post(
     'https://graph.microsoft.com/v1.0/users/' + GRAPH_SENDER + '/sendMail',

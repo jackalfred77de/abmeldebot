@@ -619,14 +619,15 @@ function generateAbmeldungPdf(session) {
             try {
               const today2 = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
               const vollmachtData = JSON.stringify({
-                Vorname:      data.firstName,
-                Nachname:     data.lastName,
-                Bezirk:       data.bezirk || 'Berlin',
-                Datum:        today2,
-                Geburtsdatum: data.birthDate || '',
-                Adresse:      data.fullAddress || '',
-                AuszugDatum:  data.moveOutDate || '',
-                Language:     data.language || 'de',
+                Vorname:        data.firstName,
+                Nachname:       data.lastName,
+                Bezirk:         data.bezirk || 'Berlin',
+                Datum:          today2,
+                Geburtsdatum:   data.birthDate || '',
+                Adresse:        data.fullAddress || '',
+                AuszugDatum:    data.moveOutDate || '',
+                Language:       data.language || 'de',
+                SignaturBase64: (data.sigMode === 'paste' && data.signatureImage) ? data.signatureImage : '',
               });
               execFileSync(PYTHON3, [vollmachtScript, vollmachtData, vollmachtPath], { env: pyEnv });
               session._vollmachtPath = vollmachtPath;

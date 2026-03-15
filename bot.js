@@ -626,16 +626,16 @@ function generateAbmeldungPdf(session) {
                 Geburtsdatum:   data.birthDate || '',
                 Adresse:        data.fullAddress || '',
                 AuszugDatum:    data.moveOutDate || '',
-                Language:       data.language || 'de',
+                Language:       session.lang || 'de',
                 SignaturBase64: (data.sigMode === 'paste' && data.signatureImage) ? data.signatureImage : '',
               });
-              execFileSync(PYTHON3, [vollmachtScript, vollmachtData, vollmachtPath], { env: pyEnv });
+              execFileSync(PYTHON3, [vollmachtScript, vollmachtData, vollmachtPath], { env: pyEnv, stdio: 'pipe' });
               session._vollmachtPath = vollmachtPath;
-              console.log('✅ Vollmacht gerada:', vollmachtPath);
+              console.log('✅ Vollmacht gerada:', vollmachtPath, '| lang:', session.lang);
             } catch(ve) {
               console.error('⚠️ Vollmacht gen error (non-fatal):', ve.message);
-              if (ve.stderr) console.error('⚠️ Vollmacht stderr:', ve.stderr.slice(0,500));
-              if (ve.stdout) console.error('⚠️ Vollmacht stdout:', ve.stdout.slice(0,200));
+              if (ve.stderr) console.error('⚠️ Vollmacht stderr:', ve.stderr.toString().slice(0,500));
+              if (ve.stdout) console.error('⚠️ Vollmacht stdout:', ve.stdout.toString().slice(0,200));
             }
           }
         }

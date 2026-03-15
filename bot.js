@@ -619,10 +619,14 @@ function generateAbmeldungPdf(session) {
             try {
               const today2 = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
               const vollmachtData = JSON.stringify({
-                Vorname:  data.firstName,
-                Nachname: data.lastName,
-                Bezirk:   data.bezirk || 'Berlin',
-                Datum:    today2,
+                Vorname:      data.firstName,
+                Nachname:     data.lastName,
+                Bezirk:       data.bezirk || 'Berlin',
+                Datum:        today2,
+                Geburtsdatum: data.birthDate || '',
+                Adresse:      data.fullAddress || '',
+                AuszugDatum:  data.moveOutDate || '',
+                Language:     data.language || 'de',
               });
               execFileSync(PYTHON3, [vollmachtScript, vollmachtData, vollmachtPath], { env: pyEnv });
               session._vollmachtPath = vollmachtPath;
@@ -767,7 +771,7 @@ async function sendAbmeldungEmail(toEmail, pdfPath, session) {
     '<p>im Anhang finden Sie Ihr ausgef\u00fclltes Abmeldeformular (Aktenzeichen: <strong>' + orderId + '</strong>).</p>' +
     stepsHtml +
     '<p>Mit freundlichen Gr\u00fc\u00dfen,</p>' +
-    '<p><img src="data:image/png;base64,' + SIG_B64 + '" alt="Unterschrift" style="max-height:80px;"/></p>' +
+    // (sig img removed)
     '<p><strong>FREDERICO E. REICHEL</strong><br/>' +
     '<strong>Rechtsanwalt</strong><br/>' +
     'Katzbachstraße 18<br/>' +
@@ -1312,6 +1316,79 @@ bot.action('skip_anmeldung', async (ctx) => {
   const session = getSession(ctx.chat.id);
   await ctx.answerCbQuery();
   await askFamily(ctx, session);
+});
+
+// Handler para documentos enviados como ficheiro (PDF ou imagem)
+bot.on('document', async (ctx) => {
+  const session = getSession(ctx.chat.id);
+  if (!session || !session.step) return;
+  const doc = ctx.message.document;
+  const mime = doc.mime_type || '';
+  const isImage = mime.startsWith('image/');
+  const isPdf   = mime === 'application/pdf';
+  if (!isImage && !isPdf) {
+    await ctx.reply(t(session, 'error_photo') + ' (JPEG/PNG/PDF)');
+    return;
+  }
+  ctx.reply(t(session, 'processing'));
+  let base64Image = null;
+  if (isImage) {
+    base64Image = await downloadPhoto(ctx, doc.file_id);
+  } else if (isPdf) {
+    try {
+      const { execFileSync } = require('child_process');
+      const PYTHON3 = process.env.PYTHON_PATH || 'python3';
+      const tmpPdf = path.join(BOT_DIR, 'pdfs', 'tmp_' + doc.file_id.slice(-8) + '.pdf');
+      const tmpPng = tmpPdf.replace('.pdf', '.png');
+      const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+      const resp = await require('axios').get(fileLink.href, { responseType: 'arraybuffer' });
+      fs.writeFileSync(tmpPdf, Buffer.from(resp.data));
+      const pyConvert = "import fitz,sys; d=fitz.open(sys.argv[1]); mat=fitz.Matrix(2,2); pix=d[0].get_pixmap(matrix=mat); pix.save(sys.argv[2]); print('OK')";
+      execFileSync(PYTHON3, ['-c', pyConvert, tmpPdf, tmpPng], { timeout: 20000 });
+      base64Image = fs.readFileSync(tmpPng).toString('base64');
+      try { fs.unlinkSync(tmpPdf); fs.unlinkSync(tmpPng); } catch(_) {}
+    } catch(e) {
+      console.error('PDF->image error:', e.message);
+      await ctx.reply('❌ Erro ao processar PDF. Tente enviar como foto.');
+      return;
+    }
+  }
+  if (!base64Image) { await ctx.reply(t(session, 'error_photo')); return; }
+  switch (session.step) {
+    case 'signature':
+      session.data.signatureImage = base64Image;
+      await ctx.reply(t(session, 'signature_received'));
+      await showSummary(ctx, session);
+      break;
+    case 'id_front':
+      session.data.idFrontImage  = base64Image;
+      session.data.idFrontFileId = doc.file_id;
+      await ctx.reply(t(session, 'id_front_received'));
+      session.step = 'id_back';
+      await ctx.reply(t(session, 'ask_id_back'));
+      break;
+    case 'id_back':
+      session.data.idBackImage  = base64Image;
+      session.data.idBackFileId = doc.file_id;
+      await ctx.reply(t(session, 'id_back_received'));
+      session.step = 'anmeldung';
+      await ctx.reply(t(session, 'ask_anmeldung'), Markup.inlineKeyboard([
+        [Markup.button.callback(t(session, 'skip_doc'), 'skip_anmeldung')]
+      ]));
+      break;
+    case 'anmeldung':
+      session.data.anmeldungFileId = doc.file_id;
+      await ctx.reply('✅ Anmeldung recebida!');
+      await askFamily(ctx, session);
+      break;
+    case 'vollmacht':
+      session.data.vollmachtFileId = doc.file_id;
+      await ctx.reply('✅ Vollmacht recebida!');
+      await triggerPowerAutomate(session);
+      await ctx.reply(t(session, 'done_message'));
+      session.step = 'done';
+      break;
+  }
 });
 
 // Show summary

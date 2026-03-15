@@ -841,8 +841,8 @@ async function triggerPowerAutomate(session) {
         await bot.telegram.sendDocument(ADMIN_CHAT_ID, session.data.anmeldungFileId);
       } catch(e) { console.log('Anmeldung forward error:', e.message); }
     }
-    // Enviar Vollmacht ao CLIENTE via Telegram (full service)
-    if (session.data.service === 'full' && session._vollmachtPath && fs.existsSync(session._vollmachtPath)) {
+    // Enviar Vollmacht ao CLIENTE via Telegram (full service, só se sigMode===paste — já tem assinatura)
+    if (session.data.service === 'full' && session.data.sigMode === 'paste' && session._vollmachtPath && fs.existsSync(session._vollmachtPath)) {
       try {
         const lang = session.lang || 'de';
         const vollmachtCaption = {
@@ -1102,6 +1102,22 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // Correcção da nova morada — passos 2 e 3
+  if (session.step === 'corr_newaddress_plzcity') {
+    session.data.newPlzCity = text;
+    session.step = 'corr_newaddress_country';
+    await ctx.reply(t(session, 'ask_newaddress_country'));
+    return;
+  }
+  if (session.step === 'corr_newaddress_country') {
+    session.data.newCountry = text;
+    session.data.newFullAddress = `${session.data.newStreet}, ${session.data.newPlzCity}, ${session.data.newCountry}`;
+    session.step = null;
+    await ctx.reply('✅');
+    await showSummary(ctx, session);
+    return;
+  }
+
   // Correção pontual de campo
   if (session.step && session.step.startsWith('corr_')) {
     const field = session.step.replace('corr_', '');
@@ -1120,10 +1136,11 @@ bot.on('text', async (ctx) => {
         session.data.plz = plz;
         session.data.bezirk = getBezirk(plz);
       } else if (field === 'newaddress') {
-        session.data.newFullAddress = text;
+        // Inicia fluxo de 3 perguntas para nova morada
         session.data.newStreet = text;
-        session.data.newPlzCity = '';
-        session.data.newCountry = '';
+        session.step = 'corr_newaddress_plzcity';
+        await ctx.reply(t(session, 'ask_newaddress_plzcity'));
+        return;
       } else {
         session.data[info.key] = text;
       }

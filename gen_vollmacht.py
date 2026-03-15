@@ -276,9 +276,13 @@ def build(data_json_str, output_path):
         try:
             sig_bytes = enhance_sig(sig_b64)
             page.insert_image(fitz.Rect(LX, y, LX+150, y+sig_h), stream=sig_bytes)
+            if bilingual:
+                page.insert_image(fitz.Rect(RX, y, RX+150, y+sig_h), stream=sig_bytes)
         except Exception as e:
             print(f"sig insert warn: {e}", file=sys.stderr)
             page.draw_line((LX, y+30), (LX+150, y+30), width=0.5)
+            if bilingual:
+                page.draw_line((RX, y+30), (RX+150, y+30), width=0.5)
     else:
         page.draw_line((LX, y+30), (LX+150, y+30), width=0.5)
         if bilingual:

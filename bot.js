@@ -634,6 +634,8 @@ function generateAbmeldungPdf(session) {
               console.log('✅ Vollmacht gerada:', vollmachtPath);
             } catch(ve) {
               console.error('⚠️ Vollmacht gen error (non-fatal):', ve.message);
+              if (ve.stderr) console.error('⚠️ Vollmacht stderr:', ve.stderr.slice(0,500));
+              if (ve.stdout) console.error('⚠️ Vollmacht stdout:', ve.stdout.slice(0,200));
             }
           }
         }
@@ -839,6 +841,27 @@ async function triggerPowerAutomate(session) {
         await bot.telegram.sendDocument(ADMIN_CHAT_ID, session.data.anmeldungFileId);
       } catch(e) { console.log('Anmeldung forward error:', e.message); }
     }
+    // Enviar Vollmacht ao CLIENTE via Telegram (full service)
+    if (session.data.service === 'full' && session._vollmachtPath && fs.existsSync(session._vollmachtPath)) {
+      try {
+        const lang = session.lang || 'de';
+        const vollmachtCaption = {
+          de: '📜 *Ihre Vollmacht*
+
+Bitte unterschreiben Sie dieses Dokument und senden Sie es an unser Büro.',
+          pt: '📜 *Sua Procuração*
+
+Por favor assine este documento e envie para o nosso escritório.',
+          en: '📜 *Your Power of Attorney*
+
+Please sign this document and send it to our office.',
+        };
+        await session.ctx.replyWithDocument(
+          { source: session._vollmachtPath, filename: `Vollmacht_${session.data.orderId}.pdf` },
+          { caption: vollmachtCaption[lang] || vollmachtCaption['de'], parse_mode: 'Markdown' }
+        );
+      } catch(e) { console.log('Vollmacht cliente error:', e.message); }
+    }
     const result  = await sendAbmeldungEmail(session.data.email, pdfPath, session);
 
     // ── SharePoint: upload de documentos + ledger ──────────────────────────
@@ -878,6 +901,7 @@ async function handlePaymentConfirmed(ctx, session) {
   };
   await ctx.reply(ackMsgs[lang], { parse_mode: 'Markdown' });
 
+  session.ctx = ctx;  // guardar ctx para enviar vollmacht ao cliente
   const result = await triggerPowerAutomate(session);
 
   const doneMsgs = {
@@ -1385,6 +1409,7 @@ bot.on('document', async (ctx) => {
     case 'vollmacht':
       session.data.vollmachtFileId = doc.file_id;
       await ctx.reply('✅ Vollmacht recebida!');
+      session.ctx = ctx;  // guardar ctx
       await triggerPowerAutomate(session);
       await ctx.reply(t(session, 'done_message'));
       session.step = 'done';

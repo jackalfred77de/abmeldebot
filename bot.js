@@ -846,15 +846,9 @@ async function triggerPowerAutomate(session) {
       try {
         const lang = session.lang || 'de';
         const vollmachtCaption = {
-          de: '📜 *Ihre Vollmacht*
-
-Bitte unterschreiben Sie dieses Dokument und senden Sie es an unser Büro.',
-          pt: '📜 *Sua Procuração*
-
-Por favor assine este documento e envie para o nosso escritório.',
-          en: '📜 *Your Power of Attorney*
-
-Please sign this document and send it to our office.',
+          de: '📜 *Ihre Vollmacht*\n\nBitte unterschreiben und an unser Büro senden.',
+          pt: '📜 *Sua Procuração*\n\nPor favor assine e envie para o nosso escritório.',
+          en: '📜 *Your Power of Attorney*\n\nPlease sign and send to our office.',
         };
         await session.ctx.replyWithDocument(
           { source: session._vollmachtPath, filename: `Vollmacht_${session.data.orderId}.pdf` },
@@ -864,15 +858,14 @@ Please sign this document and send it to our office.',
     }
     const result  = await sendAbmeldungEmail(session.data.email, pdfPath, session);
 
-    // ── SharePoint: upload de documentos + ledger ──────────────────────────
-    SP.processCaseToSharePoint(session, pdfPath, session._vollmachtPath || null, bot)
-      .catch(e => console.error('SP non-fatal error:', e.message));
-
-    // Archive PDF instead of deleting
+    // Archive PDF then upload to SharePoint
     const archiveDir = path.join(BOT_DIR, 'pdfs', 'archive');
     if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
     const archivePath = path.join(archiveDir, path.basename(pdfPath));
     try { fs.renameSync(pdfPath, archivePath); console.log('📁 PDF arquivado:', archivePath); } catch (_) {}
+    // SP upload: use archivePath (moved), vollmacht still at original path
+    SP.processCaseToSharePoint(session, archivePath, session._vollmachtPath || null, bot)
+      .catch(e => console.error('SP non-fatal error:', e.message));
     return result;
   } catch (err) {
     console.error('❌ PDF/email error:', err.message);

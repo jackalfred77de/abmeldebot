@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-gen_vollmacht.py  --  Vollmacht Abmeldung (bilingual, one page)
-Uses PyMuPDF (fitz) — same library already used by fill_abmeldung.py
-Args: json_data output_path
+gen_vollmacht.py  --  Vollmacht Abmeldung (bicolunada, uma página)
+Usa PyMuPDF (fitz). Args: json_data output_path
 """
-import sys, json, os, base64, io
+import sys, json, base64
 from datetime import date
-import fitz  # PyMuPDF
+import fitz
 
-# ── translations ────────────────────────────────────────────────────────────
 TRANS = {
     'DE': {
         'title':       'Vollmacht',
         'hereby':      'Hiermit bevollmächtige ich',
-        'represent':   'mich gegenüber dem zuständigen Bürgeramt / der zuständigen Meldebehörde im Zusammenhang mit meiner Abmeldung einer Wohnung in Berlin zu vertreten.',
-        'scope':       'Die Vollmacht umfasst die Befugnis, die Abmeldung in meinem Namen zu erklären, erforderliche Unterlagen einzureichen sowie Bestätigungen und sonstige Schreiben im Zusammenhang mit der Abmeldung entgegenzunehmen.',
+        'represent':   ('mich gegenüber dem zuständigen Bürgeramt / der zuständigen '
+                        'Meldebehörde im Zusammenhang mit meiner Abmeldung einer Wohnung '
+                        'in Berlin zu vertreten.'),
+        'scope':       ('Die Vollmacht umfasst die Befugnis, die Abmeldung in meinem Namen '
+                        'zu erklären, erforderliche Unterlagen einzureichen sowie '
+                        'Bestätigungen und sonstige Schreiben im Zusammenhang mit der '
+                        'Abmeldung entgegenzunehmen.'),
         'address_lbl': 'Abzumeldende Wohnung:',
         'name_lbl':    'Name:',
         'birth_lbl':   'Geburtsdatum:',
@@ -23,12 +26,17 @@ TRANS = {
         'place_lbl':   'Ort, Datum:',
         'sig_lbl':     'Unterschrift:',
         'berlin_date': 'Berlin, ',
+        'client_lbl':  'Vollmachtgeber/in:',
     },
     'PT': {
         'title':       'Procuração',
         'hereby':      'Por meio desta, outorgo poderes a',
-        'represent':   'para me representar perante a Junta de Freguesia / Autoridade de Registro competente, no âmbito do cancelamento de registro de uma residência em Berlim.',
-        'scope':       'A procuração inclui a autorização para declarar o cancelamento em meu nome, apresentar documentos necessários e receber confirmações e demais correspondências relacionadas ao cancelamento.',
+        'represent':   ('para me representar perante a Junta de Freguesia / Autoridade de '
+                        'Registro competente, no âmbito do cancelamento de registro de uma '
+                        'residência em Berlim.'),
+        'scope':       ('A procuração inclui a autorização para declarar o cancelamento em '
+                        'meu nome, apresentar documentos necessários e receber confirmações '
+                        'e demais correspondências relacionadas ao cancelamento.'),
         'address_lbl': 'Residência a cancelar:',
         'name_lbl':    'Nome:',
         'birth_lbl':   'Data de nascimento:',
@@ -36,12 +44,17 @@ TRANS = {
         'place_lbl':   'Local, Data:',
         'sig_lbl':     'Assinatura:',
         'berlin_date': 'Berlim, ',
+        'client_lbl':  'Outorgante:',
     },
     'EN': {
         'title':       'Power of Attorney',
         'hereby':      'I hereby authorize',
-        'represent':   'to represent me before the competent Residents Registration Office in connection with the deregistration of a residence in Berlin.',
-        'scope':       'The power of attorney includes the authority to declare the deregistration in my name, to submit required documents, and to receive confirmations and other correspondence in connection with the deregistration.',
+        'represent':   ('to represent me before the competent Residents Registration Office '
+                        'in connection with the deregistration of a residence in Berlin.'),
+        'scope':       ('The power of attorney includes the authority to declare the '
+                        'deregistration in my name, to submit required documents, and to '
+                        'receive confirmations and other correspondence in connection with '
+                        'the deregistration.'),
         'address_lbl': 'Address to deregister:',
         'name_lbl':    'Name:',
         'birth_lbl':   'Date of birth:',
@@ -49,8 +62,10 @@ TRANS = {
         'place_lbl':   'Place, Date:',
         'sig_lbl':     'Signature:',
         'berlin_date': 'Berlin, ',
+        'client_lbl':  'Principal:',
     },
 }
+
 
 def get_lang_key(lang_str):
     if not lang_str:
@@ -63,33 +78,56 @@ def get_lang_key(lang_str):
     return 'DE'
 
 
-def enhance_signature_bytes(b64_data):
-    """Return enhanced PNG bytes from b64 image data using fitz."""
+def enhance_sig(b64):
     try:
-        raw = base64.b64decode(b64_data)
-        img = fitz.Pixmap(raw)
-        # Convert to grayscale
-        if img.n > 2:
-            img = fitz.Pixmap(fitz.csGRAY, img)
-        # Boost contrast: apply gamma < 1 to darken (signature ink)
-        img.gamma_with(0.3)
-        return img.tobytes("png")
+        raw = base64.b64decode(b64)
+        pix = fitz.Pixmap(raw)
+        if pix.n > 2:
+            pix = fitz.Pixmap(fitz.csGRAY, pix)
+        pix.gamma_with(0.25)
+        return pix.tobytes("png")
     except Exception as e:
-        print(f'sig enhance warn: {e}', file=sys.stderr)
-        return base64.b64decode(b64_data)
+        print(f"sig warn: {e}", file=sys.stderr)
+        return base64.b64decode(b64)
 
 
-def draw_wrapped_text(page, text, rect, fontsize=8.5, bold=False, color=(0, 0, 0)):
-    """Insert text that wraps within rect. Returns y position after last line."""
-    fontname = "helv" if not bold else "hebo"
-    # Use insert_htmlbox for proper wrapping with fitz
-    story_html = f'<p style="font-size:{fontsize}pt; font-family:Helvetica; color:rgb(0,0,0);">'
-    if bold:
-        story_html += f'<b>{text}</b>'
-    else:
-        story_html += text
-    story_html += '</p>'
-    page.insert_htmlbox(rect, story_html, css="* { margin: 0; padding: 0; }")
+# ── Low-level text writers ────────────────────────────────────────────────────
+
+def write_text(page, x, y, text, fontsize=8.5, bold=False, color=(0,0,0)):
+    """Single-line text insert."""
+    fn = "hebo" if bold else "helv"
+    page.insert_text((x, y), text, fontsize=fontsize, fontname=fn, color=color)
+    return y + fontsize + 2
+
+
+def write_wrapped(page, x, y, w, text, fontsize=8.5, bold=False, line_gap=2):
+    """
+    Word-wrap text into column of width w.
+    Returns y after last line.
+    """
+    fn = "hebo" if bold else "helv"
+    # Measure average char width (approx)
+    char_w = fontsize * 0.50
+    max_chars = max(1, int(w / char_w))
+
+    words = text.split()
+    lines = []
+    cur = ""
+    for word in words:
+        test = (cur + " " + word).strip()
+        if len(test) <= max_chars:
+            cur = test
+        else:
+            if cur:
+                lines.append(cur)
+            cur = word
+    if cur:
+        lines.append(cur)
+
+    for line in lines:
+        page.insert_text((x, y), line, fontsize=fontsize, fontname=fn, color=(0,0,0))
+        y += fontsize + line_gap
+    return y
 
 
 def build(data_json_str, output_path):
@@ -103,173 +141,160 @@ def build(data_json_str, output_path):
     language     = d.get('Language', 'de')
     sig_b64      = d.get('SignaturBase64', '') or d.get('Signatur', '')
 
-    lang_key = get_lang_key(language)
+    lang_key  = get_lang_key(language)
     bilingual = (lang_key != 'DE')
-
     today_str = date.today().strftime('%d.%m.%Y')
     full_name = f'{vorname} {nachname}'.strip()
 
     de = TRANS['DE']
     tr = TRANS[lang_key]
 
-    # ── Page setup ───────────────────────────────────────────────────────────
-    doc = fitz.open()
-    page = doc.new_page(width=595, height=842)  # A4
+    # ── Page layout ───────────────────────────────────────────────────────────
+    doc  = fitz.open()
+    page = doc.new_page(width=595, height=842)
 
-    margin_x = 50
-    margin_y = 50
-    page_w = 595 - 2 * margin_x   # usable width = 495
-    col_gap = 10
+    ML = 45          # left margin
+    MR = 45          # right margin
+    MT = 45          # top margin
+    PW = 595 - ML - MR   # 505 pts
 
     if bilingual:
-        col_w = (page_w - col_gap) / 2
-        col_x = [margin_x, margin_x + col_w + col_gap]
+        GAP = 14
+        CW  = (PW - GAP) / 2   # ~245 pts
+        LX  = ML                # left col x
+        RX  = ML + CW + GAP     # right col x  (~304)
     else:
-        col_w = page_w
-        col_x = [margin_x, margin_x]  # only use first column
+        CW  = PW
+        LX  = ML
+        RX  = ML   # unused
 
-    y = margin_y
-    line_h_title = 18
-    line_h_body  = 12
-    line_h_small = 10
-    font_title = 12
-    font_body  = 8.5
+    FS   = 8.5
+    FST  = 11.5   # title
+    LH   = FS + 3  # line height body
 
-    lawyer_lines = [
+    lawyer = [
         "Herrn Rechtsanwalt Frederico Eduardo Reichel",
         "Katzbachstraße 18",
         "10965 Berlin",
     ]
 
-    def insert_text(page, x, y, text, fontsize=8.5, bold=False, color=(0,0,0)):
-        fontname = "hebo" if bold else "helv"
-        page.insert_text((x, y), text, fontsize=fontsize, fontname=fontname, color=color)
+    # ── Draw vertical divider (bilingual only) ────────────────────────────────
+    div_x = ML + CW + GAP / 2  # midpoint between columns
+    # Will draw after all content to know end Y
 
-    def insert_wrapped(page, rect, text, fontsize=8.5, bold=False):
-        """Wrap text into rect using HTML box."""
-        w = '<b>' if bold else ''
-        we = '</b>' if bold else ''
-        html = f'<span style="font-size:{fontsize}pt;font-family:Helvetica;">{w}{text}{we}</span>'
-        page.insert_htmlbox(rect, html)
+    # ── Track max Y for divider ───────────────────────────────────────────────
+    y_start = MT
 
-    def get_text_height(text, col_width, fontsize=8.5):
-        """Estimate height needed for text block."""
-        chars_per_line = int(col_width / (fontsize * 0.5))
-        lines = max(1, len(text) // max(1, chars_per_line) + 1)
-        return lines * (fontsize + 2)
+    # ── TITLE ─────────────────────────────────────────────────────────────────
+    y = MT
+    page.insert_text((LX, y + FST), de['title'],
+                     fontsize=FST, fontname="hebo", color=(0,0,0))
+    if bilingual:
+        page.insert_text((RX, y + FST), tr['title'],
+                         fontsize=FST, fontname="hebo", color=(0,0,0))
+    y += FST + 6
 
-    # ── TITLE ────────────────────────────────────────────────────────────────
-    for i, (cx, title_txt) in enumerate(zip(col_x, [de['title'], tr['title'] if bilingual else ''])):
-        if not title_txt:
-            continue
-        insert_text(page, cx, y + line_h_title, title_txt, fontsize=font_title, bold=True)
-    y += line_h_title + 8
-
-    # Divider line
-    page.draw_line((margin_x, y), (595 - margin_x, y), color=(0.7, 0.7, 0.7), width=0.5)
+    # Horizontal line under title
+    page.draw_line((ML, y), (595-MR, y), color=(0.5,0.5,0.5), width=0.7)
     y += 8
 
-    # ── HEREBY ───────────────────────────────────────────────────────────────
-    for cx, txt in zip(col_x, [de['hereby'], tr['hereby'] if bilingual else '']):
-        if txt:
-            insert_text(page, cx, y, txt, fontsize=font_body)
-    y += line_h_body
+    # ── HEREBY ────────────────────────────────────────────────────────────────
+    page.insert_text((LX, y), de['hereby'], fontsize=FS, fontname="helv")
+    if bilingual:
+        page.insert_text((RX, y), tr['hereby'], fontsize=FS, fontname="helv")
+    y += LH + 1
 
-    # Lawyer block
-    for line in lawyer_lines:
-        for cx in (col_x[:2] if bilingual else col_x[:1]):
-            insert_text(page, cx, y, line, fontsize=font_body, bold=True)
-        y += line_h_small
+    # ── LAWYER BLOCK ─────────────────────────────────────────────────────────
+    for line in lawyer:
+        page.insert_text((LX, y), line, fontsize=FS, fontname="hebo")
+        if bilingual:
+            page.insert_text((RX, y), line, fontsize=FS, fontname="hebo")
+        y += LH - 1
     y += 4
 
-    # ── REPRESENT ────────────────────────────────────────────────────────────
-    for i, (cx, txt) in enumerate(zip(col_x, [de['represent'], tr['represent'] if bilingual else ''])):
-        if not txt:
-            continue
-        rect = fitz.Rect(cx, y, cx + col_w, y + 60)
-        insert_wrapped(page, rect, txt, fontsize=font_body)
-    # Estimate height
-    rep_h = max(get_text_height(de['represent'], col_w, font_body), 40)
-    y += rep_h + 4
+    # ── REPRESENT ─────────────────────────────────────────────────────────────
+    yL = write_wrapped(page, LX, y, CW, de['represent'], fontsize=FS)
+    if bilingual:
+        yR = write_wrapped(page, RX, y, CW, tr['represent'], fontsize=FS)
+        y = max(yL, yR)
+    else:
+        y = yL
+    y += 4
 
-    # ── SCOPE ────────────────────────────────────────────────────────────────
-    for cx, txt in zip(col_x, [de['scope'], tr['scope'] if bilingual else '']):
-        if not txt:
-            continue
-        rect = fitz.Rect(cx, y, cx + col_w, y + 80)
-        insert_wrapped(page, rect, txt, fontsize=font_body)
-    scope_h = max(get_text_height(de['scope'], col_w, font_body), 50)
-    y += scope_h + 10
-
-    # Divider
-    page.draw_line((margin_x, y), (595 - margin_x, y), color=(0.85, 0.85, 0.85), width=0.3)
+    # ── SCOPE ─────────────────────────────────────────────────────────────────
+    yL = write_wrapped(page, LX, y, CW, de['scope'], fontsize=FS)
+    if bilingual:
+        yR = write_wrapped(page, RX, y, CW, tr['scope'], fontsize=FS)
+        y = max(yL, yR)
+    else:
+        y = yL
     y += 8
 
-    # ── DATA FIELDS ──────────────────────────────────────────────────────────
-    fields_de = [
-        (de['address_lbl'], adresse),
-        (de['name_lbl'],    full_name),
-        (de['birth_lbl'],   geburtsdatum),
-        (de['moveout_lbl'], auszugdatum),
-    ]
-    fields_tr = [
-        (tr['address_lbl'], adresse),
-        (tr['name_lbl'],    full_name),
-        (tr['birth_lbl'],   geburtsdatum),
-        (tr['moveout_lbl'], auszugdatum),
-    ]
+    # Thin separator
+    page.draw_line((ML, y), (595-MR, y), color=(0.8,0.8,0.8), width=0.4)
+    y += 8
 
-    for (lde, vde), (ltr, vtr) in zip(fields_de, fields_tr):
-        # Left column (DE)
-        insert_text(page, col_x[0], y, lde, fontsize=font_body, bold=True)
-        insert_text(page, col_x[0] + 120, y, vde, fontsize=font_body)
-        # Right column (TR)
+    # ── DATA FIELDS ───────────────────────────────────────────────────────────
+    def field_row(lde, ltr, val):
+        nonlocal y
+        # Left column
+        page.insert_text((LX, y), lde, fontsize=FS, fontname="hebo")
+        page.insert_text((LX + 115, y), val, fontsize=FS, fontname="helv")
+        # Right column
         if bilingual:
-            insert_text(page, col_x[1], y, ltr, fontsize=font_body, bold=True)
-            insert_text(page, col_x[1] + 120, y, vtr, fontsize=font_body)
-        y += line_h_body + 2
+            page.insert_text((RX, y), ltr, fontsize=FS, fontname="hebo")
+            page.insert_text((RX + 115, y), val, fontsize=FS, fontname="helv")
+        y += LH + 1
 
-    y += 14
+    # Client name (Vollmachtgeber)
+    field_row(de['client_lbl'], tr['client_lbl'] if bilingual else '', full_name)
+    field_row(de['birth_lbl'],  tr['birth_lbl']  if bilingual else '', geburtsdatum)
+    field_row(de['address_lbl'],tr['address_lbl'] if bilingual else '', adresse)
+    field_row(de['moveout_lbl'],tr['moveout_lbl'] if bilingual else '', auszugdatum)
 
-    # ── PLACE / DATE ─────────────────────────────────────────────────────────
-    for cx, lbl, prefix in [
-        (col_x[0], de['place_lbl'], de['berlin_date']),
-        (col_x[1] if bilingual else None, tr['place_lbl'] if bilingual else None, tr['berlin_date'] if bilingual else None),
-    ]:
-        if cx is None:
-            continue
-        insert_text(page, cx, y, lbl, fontsize=font_body, bold=True)
-        insert_text(page, cx + 80, y, prefix + today_str, fontsize=font_body)
-    y += line_h_body + 12
+    y += 10
 
-    # ── SIGNATURE LABEL ──────────────────────────────────────────────────────
-    for cx, lbl in [(col_x[0], de['sig_lbl']), (col_x[1] if bilingual else None, tr['sig_lbl'] if bilingual else None)]:
-        if cx is None:
-            continue
-        insert_text(page, cx, y, lbl, fontsize=font_body, bold=True)
-    y += line_h_body + 4
+    # ── PLACE / DATE ──────────────────────────────────────────────────────────
+    place_de = de['berlin_date'] + today_str
+    place_tr = tr['berlin_date'] + today_str
+    page.insert_text((LX, y), de['place_lbl'], fontsize=FS, fontname="hebo")
+    page.insert_text((LX + 75, y), place_de, fontsize=FS, fontname="helv")
+    if bilingual:
+        page.insert_text((RX, y), tr['place_lbl'], fontsize=FS, fontname="hebo")
+        page.insert_text((RX + 75, y), place_tr, fontsize=FS, fontname="helv")
+    y += LH + 12
+
+    # ── SIGNATURE LABEL ───────────────────────────────────────────────────────
+    page.insert_text((LX, y), de['sig_lbl'], fontsize=FS, fontname="hebo")
+    if bilingual:
+        page.insert_text((RX, y), tr['sig_lbl'], fontsize=FS, fontname="hebo")
+    y += LH + 4
 
     # ── SIGNATURE IMAGE or LINE ───────────────────────────────────────────────
+    sig_h = 52
     if sig_b64 and sig_b64.strip():
         try:
-            sig_bytes = enhance_signature_bytes(sig_b64)
-            sig_rect = fitz.Rect(col_x[0], y, col_x[0] + 150, y + 55)
-            page.insert_image(sig_rect, stream=sig_bytes)
+            sig_bytes = enhance_sig(sig_b64)
+            page.insert_image(fitz.Rect(LX, y, LX+150, y+sig_h), stream=sig_bytes)
         except Exception as e:
-            print(f'sig insert warn: {e}', file=sys.stderr)
-            page.draw_line((col_x[0], y + 30), (col_x[0] + 150, y + 30), width=0.5)
+            print(f"sig insert warn: {e}", file=sys.stderr)
+            page.draw_line((LX, y+30), (LX+150, y+30), width=0.5)
     else:
-        # Draw signature line
-        page.draw_line((col_x[0], y + 30), (col_x[0] + 150, y + 30), width=0.5)
+        page.draw_line((LX, y+30), (LX+150, y+30), width=0.5)
         if bilingual:
-            page.draw_line((col_x[1], y + 30), (col_x[1] + 150, y + 30), width=0.5)
+            page.draw_line((RX, y+30), (RX+150, y+30), width=0.5)
 
-    # ── Vertical divider between columns ─────────────────────────────────────
+    y_end = y + sig_h + 5
+
+    # ── Vertical divider ─────────────────────────────────────────────────────
     if bilingual:
-        mid_x = margin_x + col_w + col_gap / 2
-        page.draw_line((mid_x, margin_y + 26), (mid_x, y + 40), color=(0.75, 0.75, 0.75), width=0.5)
+        page.draw_line(
+            (div_x, y_start + FST + 8),
+            (div_x, y_end),
+            color=(0.7, 0.7, 0.7),
+            width=0.5
+        )
 
-    # ── Save ─────────────────────────────────────────────────────────────────
     doc.save(output_path, garbage=4, deflate=True)
     doc.close()
     print(f'OK: {output_path}')

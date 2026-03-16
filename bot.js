@@ -158,7 +158,7 @@ bot.command('test', async (ctx) => {
     moveOutDate: '31.03.2026', newStreet: 'Rua das Flores 123', newPlzCity: '01310-100 São Paulo',
     newCountry: 'Brasilien', newFullAddress: 'Rua das Flores 123, 01310-100 São Paulo, Brasilien',
     bisherigWohnungTyp: 'Alleinige Wohnung', neueWohnungExistiert: 'nein',
-    email: 'f.reichel@me.com', phone: '+49 155 60245902',
+    email: 'f.reichel@rafer.de', phone: '+49 155 60245902',
     service: wantSig ? 'full' : 'diy',
     sigMode: wantSig ? 'paste' : 'self',
     orderId: 'TEST-' + Date.now(),

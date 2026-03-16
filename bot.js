@@ -101,7 +101,23 @@ async function notifyAdmin(session) {
   if (!ADMIN_CHAT_ID) return;
   const { data } = session;
   const message = `🔔 **Neue Abmeldung!**\n\n👤 ${data.firstName} ${data.lastName}\n📧 ${data.email}\n📱 ${data.phone || '–'}\n💼 ${data.service === 'full' ? 'Full Service (€39.99)' : 'DIY (€4.99)'}\n📆 Auszug: ${data.moveOutDate}\n📍 ${data.fullAddress}\n🏛 Bürgeramt: ${data.bezirk}\n\nBestellung: ${data.orderId}`;
-  try { await bot.telegram.sendMessage(ADMIN_CHAT_ID, message, { parse_mode: 'Markdown' }); }
+  try {
+    await bot.telegram.sendMessage(ADMIN_CHAT_ID, message, { parse_mode: 'Markdown' });
+    // Action buttons for admin
+    await bot.telegram.sendMessage(ADMIN_CHAT_ID, `⚡ Aktion für ${data.orderId}:`, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '✅ Genehmigen', callback_data: `admin_approve_${data.orderId}` },
+            { text: '❌ Ablehnen', callback_data: `admin_reject_${data.orderId}` },
+          ],
+          [
+            { text: '⏸ Zurückstellen', callback_data: `admin_hold_${data.orderId}` },
+          ]
+        ]
+      }
+    });
+  }
   catch (error) { console.error('Admin notification error:', error); }
 }
 
@@ -118,6 +134,52 @@ bot.command('start', (ctx) => {
 
 bot.command('cancel', (ctx) => { const s = getSession(ctx.chat.id); deleteSession(ctx.chat.id); ctx.reply(t(s, 'cancel')); });
 bot.command('help', (ctx) => { const s = getSession(ctx.chat.id); ctx.reply(t(s, 'help'), { parse_mode: 'Markdown' }); });
+
+// ─── ADMIN COMMANDS ──────────────────────────────────────────────────────
+bot.command('cases', async (ctx) => {
+  if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) return;
+  try {
+    const cases = await SP.listCases();
+    const pending = cases.filter(c => ['pending_review', 'email_sent', 'on_hold'].includes(c.Status));
+    if (pending.length === 0) { await ctx.reply('📋 Keine offenen F\u00e4lle.'); return; }
+    const lines = pending.map(c =>
+      `\u2022 *${c.Title}* \u2014 ${c.ClientName} (${c.Service}) \u2014 ${c.Bezirk} \u2014 _${c.Status}_`
+    ).join('\n');
+    await ctx.reply(`📋 *Offene F\u00e4lle (${pending.length}):*\n\n${lines}`, { parse_mode: 'Markdown' });
+  } catch(e) { await ctx.reply('\u274c Fehler: ' + e.message); }
+});
+
+bot.command('case', async (ctx) => {
+  if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) return;
+  const orderId = (ctx.message.text || '').split(/\s+/)[1];
+  if (!orderId) { await ctx.reply('Verwendung: /case ORDERID'); return; }
+  try {
+    const c = await SP.getCase(orderId);
+    if (!c) { await ctx.reply(`\u274c Fall ${orderId} nicht gefunden`); return; }
+    const detail = `📋 *Fall ${c.Title}*\n\n` +
+      `👤 ${c.ClientName}\n📧 ${c.Email}\n📱 ${c.Phone || '\u2013'}\n` +
+      `💼 ${c.Service}\n📍 ${c.BerlinAddress}\n🏛 ${c.Bezirk}\n` +
+      `📆 Auszug: ${c.MoveOutDate}\n🌍 Neue Adresse: ${c.NewAddress}\n` +
+      `🔖 Status: *${c.Status}*\n📅 Erstellt: ${c.CreatedAt}\n` +
+      (c.AbmeldungUrl ? `📄 [Abmeldung PDF](${c.AbmeldungUrl})\n` : '') +
+      (c.VollmachtUrl ? `📜 [Vollmacht](${c.VollmachtUrl})\n` : '') +
+      (c.Notes ? `\n📝 Notizen: ${c.Notes}` : '');
+    await ctx.reply(detail, { parse_mode: 'Markdown', disable_web_page_preview: true });
+    if (['pending_review', 'email_sent', 'on_hold'].includes(c.Status)) {
+      await ctx.reply(`\u26a1 Aktion f\u00fcr ${orderId}:`, {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '\u2705 Genehmigen', callback_data: `admin_approve_${orderId}` },
+              { text: '\u274c Ablehnen', callback_data: `admin_reject_${orderId}` },
+            ],
+            [{ text: '\u23f8 Zur\u00fcckstellen', callback_data: `admin_hold_${orderId}` }]
+          ]
+        }
+      });
+    }
+  } catch(e) { await ctx.reply('\u274c Fehler: ' + e.message); }
+});
 
 // [TEST] Comando para testes rápidos
 // /test       → DIY, sigMode self, vai direto ao resumo
@@ -377,11 +439,80 @@ const CORR_FIELD_MAP = { firstname:{key:'firstName'}, lastname:{key:'lastName'},
 bot.action(/corr_(.+)/, async (ctx) => { const s = getSession(ctx.chat.id); const field = ctx.match[1]; if (!CORR_FIELD_MAP[field]) return ctx.answerCbQuery(); s.step = `corr_${field}`; await ctx.answerCbQuery(); await ctx.reply(t(s, 'correct_enter_new')); });
 bot.action('skip_anmeldung', async (ctx) => { await ctx.answerCbQuery(); await askFamily(ctx, getSession(ctx.chat.id)); });
 
+// ─── ADMIN ACTION HANDLERS ─────────────────────────────────────────────
+bot.action(/admin_approve_(.+)/, async (ctx) => {
+  if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) return ctx.answerCbQuery('❌ Nicht autorisiert');
+  const orderId = ctx.match[1];
+  await ctx.answerCbQuery('✅ Genehmigt');
+  try {
+    const caseData = await SP.getCase(orderId);
+    if (!caseData) { await ctx.reply(`❌ Fall ${orderId} nicht gefunden`); return; }
+    const isFullService = caseData.Service === 'full';
+    const newStatus = isFullService ? 'submitted_to_behoerde' : 'completed';
+    await SP.updateCaseStatus(orderId, newStatus, `Admin genehmigt (${isFullService ? 'Full Service → wird an Bürgeramt gesendet' : 'DIY → abgeschlossen'})`);
+    await ctx.editMessageText(`✅ *${orderId}* genehmigt → ${newStatus}`, { parse_mode: 'Markdown' });
+    const chatId = caseData.ChatId;
+    if (chatId) {
+      const lang = caseData.Language || 'de';
+      const msgs = {
+        de: `✅ Ihre Abmeldung (${orderId}) wurde geprüft und genehmigt.${isFullService ? ' Wir senden das Formular an das Bürgeramt.' : ''}`,
+        pt: `✅ Sua Abmeldung (${orderId}) foi verificada e aprovada.${isFullService ? ' Enviaremos o formulário ao Bürgeramt.' : ''}`,
+        en: `✅ Your Abmeldung (${orderId}) has been reviewed and approved.${isFullService ? ' We will send the form to the Bürgeramt.' : ''}`,
+      };
+      try { await bot.telegram.sendMessage(chatId, msgs[lang] || msgs.de); } catch(e) { console.log('Client notification error:', e.message); }
+    }
+  } catch(e) { await ctx.reply('❌ Fehler: ' + e.message); }
+});
+
+bot.action(/admin_reject_(.+)/, async (ctx) => {
+  if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) return ctx.answerCbQuery('❌');
+  const orderId = ctx.match[1];
+  await ctx.answerCbQuery('Grund eingeben...');
+  sessions.set('_admin_reject_' + orderId, { orderId, step: 'awaiting_reason' });
+  await ctx.editMessageText(`❌ *${orderId}* — Bitte Ablehnungsgrund eingeben:`, { parse_mode: 'Markdown' });
+});
+
+bot.action(/admin_hold_(.+)/, async (ctx) => {
+  if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) return ctx.answerCbQuery('❌');
+  const orderId = ctx.match[1];
+  await ctx.answerCbQuery('⏸ Zurückgestellt');
+  try {
+    await SP.updateCaseStatus(orderId, 'on_hold', 'Admin: zurückgestellt');
+    await ctx.editMessageText(`⏸ *${orderId}* zurückgestellt`, { parse_mode: 'Markdown' });
+  } catch(e) { await ctx.reply('❌ Fehler: ' + e.message); }
+});
+
 // ─── TEXT HANDLER ────────────────────────────────────────────────────────
 bot.on('text', async (ctx) => {
   const session = getSession(ctx.chat.id);
   const text = ctx.message.text.trim();
   if (text.startsWith('/')) return;
+
+  // Check if this is an admin rejection reason
+  if (String(ctx.chat.id) === String(ADMIN_CHAT_ID)) {
+    for (const [key, val] of sessions.entries()) {
+      if (key.startsWith('_admin_reject_') && val.step === 'awaiting_reason') {
+        const orderId = val.orderId;
+        const reason = text;
+        sessions.delete(key);
+        try {
+          await SP.updateCaseStatus(orderId, 'rejected', `Abgelehnt: ${reason}`);
+          await ctx.reply(`❌ *${orderId}* abgelehnt.\nGrund: ${reason}`, { parse_mode: 'Markdown' });
+          const caseData = await SP.getCase(orderId);
+          if (caseData && caseData.ChatId) {
+            const lang = caseData.Language || 'de';
+            const msgs = {
+              de: `❌ Ihre Abmeldung (${orderId}) wurde leider abgelehnt.\n\nGrund: ${reason}\n\nBitte kontaktieren Sie uns: abmeldung@rafer.de`,
+              pt: `❌ Sua Abmeldung (${orderId}) foi recusada.\n\nMotivo: ${reason}\n\nPor favor entre em contato: abmeldung@rafer.de`,
+              en: `❌ Your Abmeldung (${orderId}) was rejected.\n\nReason: ${reason}\n\nPlease contact us: abmeldung@rafer.de`,
+            };
+            try { await bot.telegram.sendMessage(caseData.ChatId, msgs[lang] || msgs.de); } catch(e) { console.log('Client reject notification error:', e.message); }
+          }
+        } catch(e) { await ctx.reply('❌ Fehler: ' + e.message); }
+        return;
+      }
+    }
+  }
   if (session.step === 'awaiting_payment') { await handlePaymentConfirmed(ctx, session); return; }
   if (session.step === 'corr_newaddress_plzcity') { session.data.newPlzCity = text; session.step = 'corr_newaddress_country'; await ctx.reply(t(session, 'ask_newaddress_country')); return; }
   if (session.step === 'corr_newaddress_country') { session.data.newCountry = text; session.data.newFullAddress = `${session.data.newStreet}, ${session.data.newPlzCity}, ${session.data.newCountry}`; session.step = null; await ctx.reply('✅'); await showSummary(ctx, session); return; }

@@ -323,6 +323,76 @@ async function processCaseToSharePoint(session, pdfPath, vollmachtPath, bot) {
   }
 }
 
+// ── Listar todos os casos da lista SharePoint ───────────────────────────────
+async function listCases(filter = '') {
+  if (!LIST_ID) {
+    console.log('ℹ️  SP: SP_LIST_ID não configurado — listCases pulado');
+    return [];
+  }
+  const token = await getToken();
+  let url = `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$expand=fields&$top=200&$orderby=fields/CreatedAt desc`;
+  if (filter) url += `&$filter=${filter}`;
+
+  const allItems = [];
+  while (url) {
+    const resp = await axios.get(url, { headers: headers(token), timeout: 30000 });
+    const items = (resp.data.value || []).map(item => ({
+      id: item.id,
+      ...item.fields,
+    }));
+    allItems.push(...items);
+    url = resp.data['@odata.nextLink'] || null;
+  }
+  console.log(`📋 SP: listCases → ${allItems.length} items`);
+  return allItems;
+}
+
+// ── Obter um caso específico pelo orderId ────────────────────────────────────
+async function getCase(orderId) {
+  if (!LIST_ID) return null;
+  const token = await getToken();
+  const resp = await axios.get(
+    `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$filter=fields/Title eq '${orderId}'&$expand=fields&$top=1`,
+    { headers: headers(token), timeout: 15000 }
+  );
+  const items = resp.data.value;
+  if (!items || items.length === 0) return null;
+  return { id: items[0].id, ...items[0].fields };
+}
+
+// ── Adicionar nota ao timeline de um caso ────────────────────────────────────
+async function addCaseNote(orderId, note) {
+  if (!LIST_ID || !note) return null;
+  const token = await getToken();
+
+  const search = await axios.get(
+    `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$filter=fields/Title eq '${orderId}'&$expand=fields`,
+    { headers: headers(token), timeout: 15000 }
+  );
+  const items = search.data.value;
+  if (!items || items.length === 0) return null;
+
+  const itemId  = items[0].id;
+  const current = items[0].fields;
+  const now     = new Date().toISOString();
+
+  let timeline = [];
+  try { timeline = JSON.parse(current.Timeline || '[]'); } catch (_) {}
+  timeline.push({ ts: now, status: current.Status || 'note', note });
+
+  await axios.patch(
+    `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items/${itemId}/fields`,
+    {
+      LastUpdated: now,
+      Timeline:    JSON.stringify(timeline),
+      Notes:       note,
+    },
+    { headers: headers(token), timeout: 15000 }
+  );
+  console.log(`📝 SP: Nota adicionada a ${orderId}`);
+  return itemId;
+}
+
 module.exports = {
   isConfigured,
   createCaseFolder,
@@ -332,4 +402,7 @@ module.exports = {
   createLedgerEntry,
   updateCaseStatus,
   processCaseToSharePoint,
+  listCases,
+  getCase,
+  addCaseNote,
 };

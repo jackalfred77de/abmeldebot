@@ -120,6 +120,17 @@ app.post('/api/cases/:orderId/notes', authMiddleware, async (req, res) => {
 });
 
 // ── Health check ────────────────────────────────────────────────────────────
+// ── DSGVO: Delete case (list item + folder) ─────────────────────────────────
+app.delete('/api/cases/:orderId', authMiddleware, async (req, res) => {
+  try {
+    await SP.deleteCase(req.params.orderId);
+    res.json({ ok: true, message: `Case ${req.params.orderId} deleted (DSGVO)` });
+  } catch (err) {
+    console.error('API DELETE case error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
 });

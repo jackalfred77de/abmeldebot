@@ -51,4 +51,65 @@ function normalizeNationality(input) {
   return NATIONALITY_MAP[key] || input;
 }
 
-module.exports = { NATIONALITY_MAP, normalizeNationality };
+// ─── BIRTHPLACE MAP (PT/EN → DE) ───────────────────────────────────────────
+const BIRTHPLACE_MAP = {
+  // Português → Alemão
+  'são paulo': 'São Paulo', 'rio de janeiro': 'Rio de Janeiro',
+  'brasília': 'Brasília', 'salvador': 'Salvador', 'fortaleza': 'Fortaleza',
+  'belo horizonte': 'Belo Horizonte', 'manaus': 'Manaus', 'curitiba': 'Curitiba',
+  'recife': 'Recife', 'porto alegre': 'Porto Alegre', 'belém': 'Belém',
+  'goiânia': 'Goiânia', 'campinas': 'Campinas', 'florianópolis': 'Florianópolis',
+  'lisboa': 'Lissabon', 'porto': 'Porto', 'coimbra': 'Coimbra', 'faro': 'Faro',
+  'londres': 'London', 'london': 'London',
+  'nova york': 'New York', 'new york': 'New York', 'nova iorque': 'New York',
+  'paris': 'Paris', 'lyon': 'Lyon', 'marselha': 'Marseille', 'marseille': 'Marseille',
+  'moscou': 'Moskau', 'moscow': 'Moskau', 'moscovo': 'Moskau',
+  'varsóvia': 'Warschau', 'warsaw': 'Warschau', 'warszawa': 'Warschau',
+  'istambul': 'Istanbul', 'istanbul': 'Istanbul',
+  'roma': 'Rom', 'rome': 'Rom', 'milão': 'Mailand', 'milan': 'Mailand',
+  'nápoles': 'Neapel', 'naples': 'Neapel', 'veneza': 'Venedig', 'venice': 'Venedig',
+  'madrid': 'Madrid', 'barcelona': 'Barcelona', 'sevilha': 'Sevilla', 'seville': 'Sevilla',
+  'buenos aires': 'Buenos Aires', 'bogotá': 'Bogotá', 'bogota': 'Bogotá',
+  'cidade do méxico': 'Mexiko-Stadt', 'mexico city': 'Mexiko-Stadt', 'ciudad de méxico': 'Mexiko-Stadt',
+  'lima': 'Lima', 'santiago': 'Santiago', 'caracas': 'Caracas',
+  'mumbai': 'Mumbai', 'nova delhi': 'Neu-Delhi', 'new delhi': 'Neu-Delhi',
+  'pequim': 'Peking', 'beijing': 'Peking', 'xangai': 'Shanghai', 'shanghai': 'Shanghai',
+  'tóquio': 'Tokio', 'tokyo': 'Tokio', 'toquio': 'Tokio',
+  'kiev': 'Kiew', 'kyiv': 'Kiew',
+  'atenas': 'Athen', 'athens': 'Athen',
+  'ancara': 'Ankara', 'ankara': 'Ankara',
+  'berlim': 'Berlin', 'berlin': 'Berlin',
+  'munique': 'München', 'munich': 'München', 'münchen': 'München',
+  'hamburgo': 'Hamburg', 'hamburg': 'Hamburg',
+  'frankfurt': 'Frankfurt', 'colônia': 'Köln', 'cologne': 'Köln', 'köln': 'Köln',
+  'düsseldorf': 'Düsseldorf', 'estugarda': 'Stuttgart', 'stuttgart': 'Stuttgart',
+  'viena': 'Wien', 'vienna': 'Wien', 'wien': 'Wien',
+  'zurique': 'Zürich', 'zurich': 'Zürich', 'zürich': 'Zürich',
+  'bruxelas': 'Brüssel', 'brussels': 'Brüssel',
+  'amsterdã': 'Amsterdam', 'amsterdam': 'Amsterdam',
+  'copenhague': 'Kopenhagen', 'copenhagen': 'Kopenhagen',
+  'estocolmo': 'Stockholm', 'stockholm': 'Stockholm',
+  'oslo': 'Oslo', 'helsínquia': 'Helsinki', 'helsinki': 'Helsinki',
+  'praga': 'Prag', 'prague': 'Prag',
+  'budapeste': 'Budapest', 'budapest': 'Budapest',
+  'bucareste': 'Bukarest', 'bucharest': 'Bukarest',
+  'belgrado': 'Belgrad', 'belgrade': 'Belgrad',
+  'sófia': 'Sofia', 'sofia': 'Sofia',
+  'cairo': 'Kairo', 'cairo': 'Kairo',
+  'luanda': 'Luanda', 'maputo': 'Maputo',
+  'cidade da praia': 'Praia', 'praia': 'Praia',
+  'sydney': 'Sydney', 'melbourne': 'Melbourne',
+  'toronto': 'Toronto', 'vancouver': 'Vancouver',
+  'los angeles': 'Los Angeles', 'chicago': 'Chicago', 'san francisco': 'San Francisco',
+  'havana': 'Havanna', 'panama': 'Panama',
+  'seoul': 'Seoul', 'seul': 'Seoul',
+  'bangkok': 'Bangkok', 'singapura': 'Singapur', 'singapore': 'Singapur',
+};
+
+function normalizeBirthPlace(input) {
+  if (!input) return input;
+  const key = input.toLowerCase().trim();
+  return BIRTHPLACE_MAP[key] || input;
+}
+
+module.exports = { NATIONALITY_MAP, normalizeNationality, BIRTHPLACE_MAP, normalizeBirthPlace };

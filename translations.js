@@ -2,7 +2,7 @@
 
 const translations = {
   de: {
-    welcome: '🏛 *Kanzlei Rechtsanwalt Frederico Reichel*\n\n👋 Willkommen beim offiziellen Abmeldungs-Service der Kanzlei Reichel.\n\n🔒 *Datenschutz:* Alle Ihre Daten werden vertraulich behandelt und nach Abschluss des Services gelöscht.\n\n──────────────────────\n\n🇩🇪 Ich helfe Ihnen mit der Abmeldung in Berlin.\n🇬🇧 I help you with deregistration in Berlin.\n🇧🇷 Eu ajudo com a baixa de registro em Berlim.\n\nBitte Sprache wählen / Please choose language / Escolha o idioma:',
+    welcome: '🏛 *Kanzlei Rechtsanwalt Frederico Reichel*\n\n👋 Willkommen beim offiziellen Abmeldungs-Service der Kanzlei Reichel.\n\n🔒 *Datenschutz:* Alle Ihre Daten werden vertraulich behandelt.\n📄 Datenschutzerklärung: https://rafer.de/datenschutz-abmeldung\n\n──────────────────────\n\n🇩🇪 Ich helfe Ihnen mit der Abmeldung in Berlin.\n🇬🇧 I help you with deregistration in Berlin.\n🇧🇷 Eu ajudo com a baixa de registro em Berlim.\n\nBitte Sprache wählen / Please choose language / Escolha o idioma:',
     service_select: '✨ Bitte wählen Sie Ihren Service:\n\n━━━━━━━━━━━━━━━━━━━━━\n📝 *DIY Service – €4,99*\n✅ Wir füllen das Abmeldeformular vollständig aus\n✅ Sie erhalten das PDF per E-Mail\n📌 Sie unterschreiben und senden per Post/E-Mail\n\n━━━━━━━━━━━━━━━━━━━━━\n🎯 *Full Service – €39,99*\n✅ Wir füllen das Formular aus\n✅ Offizielle Vollmacht auf Ihren Namen\n✅ Wir versenden direkt ans Bürgeramt\n⚖️ Durch RA Frederico Reichel, Berlin\n━━━━━━━━━━━━━━━━━━━━━\n\nWelchen Service möchten Sie?',
     ask_firstname: '📝 Wie ist Ihr **Vorname**?\n\n_Alle Vornamen, genau wie im Ausweis (z.B. Maria Clara)._',
     ask_lastname: '📝 Wie ist Ihr **Nachname**?\n\n_Alle Nachnamen wie im Ausweis (z.B. Silva Oliveira)._',
@@ -75,11 +75,15 @@ const translations = {
     id_front_received: '✅ Ausweis Vorderseite erhalten!',
     id_back_received: '✅ Ausweis Rückseite erhalten!',
     processing: '⏳ Einen Moment...',
+    privacy_consent: '🔒 *Datenschutzhinweis*\n\nFür die Abmeldung verarbeiten wir folgende Daten:\n\n• Name, Geburtsdatum, Geburtsort, Geschlecht\n• Staatsangehörigkeit\n• Aktuelle und neue Adresse\n• Ausweiskopien (Vorder- und Rückseite)\n• Unterschrift (bei Full Service)\n• E-Mail-Adresse und Telefonnummer\n• Ggf. Daten von Familienangehörigen\n\nRechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung).\nVerantwortlich: RA Frederico Reichel, Katzbachstraße 18, 10965 Berlin.\n\n📄 Vollständige Datenschutzerklärung:\nhttps://rafer.de/datenschutz-abmeldung\n\nSind Sie mit der Verarbeitung Ihrer Daten einverstanden?',
+    consent_yes: '✅ Ja, einverstanden',
+    consent_no: '❌ Nein, abbrechen',
+    consent_declined: '❌ Einwilligung nicht erteilt. Ihre Daten werden nicht verarbeitet.\n\nBei Fragen: info@rafer.de\n/start um neu zu beginnen.',
     cancel: 'Abgebrochen. /start für Neustart.',
     help: '📚 **Hilfe**\n\n/start - Neu starten\n/cancel - Abbrechen\n/help - Diese Hilfe\n\n📧 info@rafer.de\n🏢 Katzbachstraße 18, 10965 Berlin'
   },
   pt: {
-    welcome: '🏛 *Escritório Rechtsanwalt Frederico Reichel*\n\n👋 Bem-vindo ao serviço oficial de Abmeldung do escritório Reichel.\n\n🔒 *Privacidade:* Todos os seus dados são tratados com sigilo e serão apagados após a entrega do serviço.\n\nEscolha seu idioma:',
+    welcome: '🏛 *Escritório Rechtsanwalt Frederico Reichel*\n\n👋 Bem-vindo ao serviço oficial de Abmeldung do escritório Reichel.\n\n🔒 *Privacidade:* Todos os seus dados são tratados com sigilo.\n📄 Política de privacidade: https://rafer.de/datenschutz-abmeldung\n\nEscolha seu idioma:',
     service_select: '✨ Escolha o seu serviço:\n\n━━━━━━━━━━━━━━━━━━━━━\n📝 *Serviço DIY – €4,99*\n✅ Preenchemos o formulário completamente (PDF)\n✅ Você recebe por e-mail\n📌 Você assina e envia pelos correios/e-mail\n\n━━━━━━━━━━━━━━━━━━━━━\n🎯 *Serviço Completo – €39,99*\n✅ Preenchemos o formulário\n✅ Procuração oficial em seu nome\n✅ Enviamos diretamente ao Bürgeramt\n⚖️ Adv. Frederico Reichel, Berlim\n━━━━━━━━━━━━━━━━━━━━━\n\nQual serviço você escolhe?',
     ask_firstname: '📝 Qual é seu **primeiro nome** (e outros prenomes)?\n\n_Todos os nomes como no documento. Ex: Maria Clara_',
     ask_lastname: '📝 Qual é seu **sobrenome**?\n\n_Todos os sobrenomes como no documento. Ex: Silva Oliveira_',
@@ -152,11 +156,15 @@ const translations = {
     id_front_received: '✅ Frente recebida!',
     id_back_received: '✅ Verso recebido!',
     processing: '⏳ Um momento...',
+    privacy_consent: '🔒 *Aviso de Privacidade*\n\nPara o processo de Abmeldung, processaremos os seguintes dados:\n\n• Nome, data de nascimento, local de nascimento, sexo\n• Nacionalidade\n• Endereço atual e novo\n• Cópias de documento de identidade (frente e verso)\n• Assinatura (no serviço completo)\n• E-mail e telefone\n• Dados de familiares, se aplicável\n\nBase legal: Art. 6 (1) b RGPD (execução de contrato).\nResponsável: RA Frederico Reichel, Katzbachstraße 18, 10965 Berlin.\n\n📄 Política de privacidade completa:\nhttps://rafer.de/datenschutz-abmeldung\n\nVocê concorda com o processamento dos seus dados?',
+    consent_yes: '✅ Sim, concordo',
+    consent_no: '❌ Não, cancelar',
+    consent_declined: '❌ Consentimento não concedido. Seus dados não serão processados.\n\nDúvidas: info@rafer.de\n/start para recomeçar.',
     cancel: 'Cancelado. /start para recomeçar.',
     help: '📚 **Ajuda**\n\n/start - Recomeçar\n/cancel - Cancelar\n/help - Ajuda\n\n📧 info@rafer.de\n🏢 Katzbachstraße 18, 10965 Berlin'
   },
   en: {
-    welcome: '🏛 *Law Office Rechtsanwalt Frederico Reichel*\n\n👋 Welcome to the official Abmeldung service of Kanzlei Reichel.\n\n🔒 *Privacy:* All your data is handled confidentially and will be deleted after service delivery.\n\nChoose your language:',
+    welcome: '🏛 *Law Office Rechtsanwalt Frederico Reichel*\n\n👋 Welcome to the official Abmeldung service of Kanzlei Reichel.\n\n🔒 *Privacy:* All your data is handled confidentially.\n📄 Privacy policy: https://rafer.de/datenschutz-abmeldung\n\nChoose your language:',
     service_select: '✨ Choose your service:\n\n━━━━━━━━━━━━━━━━━━━━━\n📝 *DIY Service – €4.99*\n✅ We fill the form completely (PDF)\n✅ Sent to your email\n📌 You sign and send by post/email\n\n━━━━━━━━━━━━━━━━━━━━━\n🎯 *Full Service – €39.99*\n✅ We fill the form\n✅ Official power of attorney in your name\n✅ We send directly to the Bürgeramt\n⚖️ RA Frederico Reichel, Berlin\n━━━━━━━━━━━━━━━━━━━━━\n\nWhich service do you choose?',
     ask_firstname: '📝 Your **first name(s)**?\n\n_All given names exactly as in your ID. E.g.: Maria Clara_',
     ask_lastname: '📝 Your **last name(s)**?\n\n_All surnames as in your ID. E.g.: Silva Oliveira_',
@@ -229,6 +237,10 @@ const translations = {
     id_front_received: '✅ Front received!',
     id_back_received: '✅ Back received!',
     processing: '⏳ One moment...',
+    privacy_consent: '🔒 *Privacy Notice*\n\nFor the deregistration process, we will process the following data:\n\n• Name, date of birth, place of birth, gender\n• Nationality\n• Current and new address\n• ID document copies (front and back)\n• Signature (for full service)\n• Email and phone number\n• Family members\' data, if applicable\n\nLegal basis: Art. 6 (1) b GDPR (contract performance).\nResponsible: RA Frederico Reichel, Katzbachstraße 18, 10965 Berlin.\n\n📄 Full privacy policy:\nhttps://rafer.de/datenschutz-abmeldung\n\nDo you agree to the processing of your data?',
+    consent_yes: '✅ Yes, I agree',
+    consent_no: '❌ No, cancel',
+    consent_declined: '❌ Consent not given. Your data will not be processed.\n\nQuestions: info@rafer.de\n/start to restart.',
     cancel: 'Cancelled. /start to restart.',
     help: '📚 **Help**\n\n/start - Restart\n/cancel - Cancel\n/help - Help\n\n📧 info@rafer.de\n🏢 Katzbachstraße 18, 10965 Berlin'
   }

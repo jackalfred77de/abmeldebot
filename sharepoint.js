@@ -393,6 +393,51 @@ async function addCaseNote(orderId, note) {
   return itemId;
 }
 
+// ── DSGVO: Fall komplett löschen (Listeneintrag + Ordner) ─────────────────
+async function deleteCase(orderId) {
+  if (!isConfigured()) throw new Error('SharePoint not configured');
+  const token = await getToken();
+
+  // 1. Delete list item (if LIST_ID configured)
+  if (LIST_ID) {
+    try {
+      const search = await axios.get(
+        `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$filter=fields/Title eq '${orderId}'&$expand=fields`,
+        { headers: headers(token), timeout: 15000 }
+      );
+      const items = search.data.value;
+      if (items && items.length > 0) {
+        await axios.delete(
+          `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items/${items[0].id}`,
+          { headers: headers(token), timeout: 15000 }
+        );
+        console.log(`🗑 SP: List item deleted for ${orderId}`);
+      }
+    } catch (e) {
+      console.error(`⚠️ SP deleteCase list error: ${e.message}`);
+    }
+  }
+
+  // 2. Delete folder with all files
+  try {
+    await axios.delete(
+      `${GRAPH}/drives/${DRIVE_ID}/root:/${CASES_FOLDER}/${orderId}`,
+      { headers: headers(token), timeout: 30000 }
+    );
+    console.log(`🗑 SP: Folder deleted: ${CASES_FOLDER}/${orderId}`);
+  } catch (e) {
+    if (e.response && e.response.status === 404) {
+      console.log(`ℹ️ SP: Folder ${orderId} not found (already deleted?)`);
+    } else {
+      console.error(`⚠️ SP deleteCase folder error: ${e.message}`);
+      throw e;
+    }
+  }
+
+  console.log(`✅ SP DSGVO: Case ${orderId} fully deleted`);
+  return true;
+}
+
 module.exports = {
   isConfigured,
   createCaseFolder,
@@ -405,4 +450,5 @@ module.exports = {
   listCases,
   getCase,
   addCaseNote,
+  deleteCase,
 };

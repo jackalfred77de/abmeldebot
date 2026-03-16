@@ -936,6 +936,7 @@ function renderSidebar(c) {
       <button class="btn-action btn-approve" onclick="updateStatus('completed')" ${isFinal ? 'disabled' : ''}>✓ Abschließen</button>
       <button class="btn-action btn-reject" onclick="updateStatus('rejected')" ${isFinal ? 'disabled' : ''}>✗ Ablehnen</button>
       <button class="btn-action btn-hold" onclick="updateStatus('on_hold')" ${isFinal ? 'disabled' : ''}>⏸ Halten</button>
+      <button class="btn-action btn-reject" onclick="deleteCase()" title="DSGVO: Fall und alle Daten löschen">🗑 Löschen</button>
     </div>
     <div class="note-row">
       <input type="text" id="noteInput" placeholder="Notiz hinzufügen…" onkeydown="if(event.key==='Enter')addNote()">
@@ -967,6 +968,20 @@ async function addNote() {
     await apiCall('POST', `/api/cases/${selectedOrderId}/notes`, { note });
     showToast('Notiz hinzugefügt');
     noteInput.value = '';
+    await fetchCases();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+async function deleteCase() {
+  if (!selectedOrderId) return;
+  const confirmed = confirm(`DSGVO-Löschung: Fall ${selectedOrderId} und alle zugehörigen Daten (SharePoint-Ordner + Listeneintrag) unwiderruflich löschen?`);
+  if (!confirmed) return;
+  try {
+    await apiCall('DELETE', `/api/cases/${selectedOrderId}`);
+    showToast(`Fall ${selectedOrderId} gelöscht (DSGVO)`);
+    closeSidebar();
     await fetchCases();
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');

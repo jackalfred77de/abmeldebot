@@ -37,7 +37,7 @@ const bot = new Telegraf(BOT_TOKEN);
 const sessions = new Map();
 
 // External modules
-const { NATIONALITY_MAP, normalizeNationality } = require('./nationality');
+const { NATIONALITY_MAP, normalizeNationality, normalizeBirthPlace } = require('./nationality');
 const { PLZ_MAP, getBezirk } = require('./plz_map');
 const translations = require('./translations');
 const { getGraphToken, sendAbmeldungEmail } = require('./email');
@@ -49,31 +49,7 @@ function t(session, key) {
   return translations[lang][key] || key;
 }
 
-// Tradução IA (fallback para mapa local)
-async function translateToGerman(text, context) {
-  if (!text || !ANTHROPIC_API_KEY) return text;
-  try {
-    const https = require('https');
-    const body = JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 50,
-      messages: [{ role: 'user', content: `Translate this ${context} to German (single word/phrase only, no explanation): "${text}". Answer only with the German word.` }]
-    });
-    return await new Promise((resolve) => {
-      const req = https.request({
-        hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }
-      }, (res) => {
-        let data = '';
-        res.on('data', d => data += d);
-        res.on('end', () => { try { const j = JSON.parse(data); resolve(j.content?.[0]?.text?.trim() || text); } catch { resolve(text); } });
-      });
-      req.on('error', () => resolve(text));
-      req.setTimeout(5000, () => { req.destroy(); resolve(text); });
-      req.write(body); req.end();
-    });
-  } catch { return text; }
-}
+// DSGVO: Anthropic API removed — using local dictionaries only (nationality.js)
 
 // Gerar Vollmacht PDF via Python
 async function generateVollmacht(data) {
@@ -184,8 +160,10 @@ bot.action(/lang_(.+)/, (ctx) => {
   ]));
 });
 
-bot.action('service_diy', async (ctx) => { const s = getSession(ctx.chat.id); s.data.service = 'diy'; s.step = 'firstname'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_firstname'), { parse_mode: 'Markdown' }); });
-bot.action('service_full', async (ctx) => { const s = getSession(ctx.chat.id); s.data.service = 'full'; s.step = 'firstname'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_firstname'), { parse_mode: 'Markdown' }); });
+bot.action('service_diy', async (ctx) => { const s = getSession(ctx.chat.id); s.data.service = 'diy'; s.step = 'consent'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'privacy_consent'), { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback(t(s, 'consent_yes'), 'consent_yes')],[Markup.button.callback(t(s, 'consent_no'), 'consent_no')]]) }); });
+bot.action('service_full', async (ctx) => { const s = getSession(ctx.chat.id); s.data.service = 'full'; s.step = 'consent'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'privacy_consent'), { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback(t(s, 'consent_yes'), 'consent_yes')],[Markup.button.callback(t(s, 'consent_no'), 'consent_no')]]) }); });
+bot.action('consent_yes', async (ctx) => { const s = getSession(ctx.chat.id); s.data.consentGiven = true; s.data.consentAt = new Date().toISOString(); s.step = 'firstname'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_firstname'), { parse_mode: 'Markdown' }); });
+bot.action('consent_no', async (ctx) => { const s = getSession(ctx.chat.id); await ctx.answerCbQuery(); await ctx.reply(t(s, 'consent_declined'), { parse_mode: 'Markdown' }); deleteSession(ctx.chat.id); });
 
 const PAYMENT_URL = {
   full: 'https://business.vivid.money/de/pay/AZyfxze6ftqRjhi9U7NpBw',
@@ -307,8 +285,9 @@ async function triggerPowerAutomate(session) {
 
 // ─── PAYMENT CONFIRMED ──────────────────────────────────────────────────
 async function handlePaymentConfirmed(ctx, session) {
-  if (session.data.nationality && ANTHROPIC_API_KEY) { const natDE = await translateToGerman(session.data.nationality, 'nationality/country name'); if (natDE && natDE !== session.data.nationality) session.data.nationality = natDE; }
-  if (session.data.birthPlace && ANTHROPIC_API_KEY) { const bpDE = await translateToGerman(session.data.birthPlace, 'city name'); if (bpDE) session.data.birthPlace = bpDE; }
+  // DSGVO: local dictionary normalization (no external API calls)
+  if (session.data.nationality) session.data.nationality = normalizeNationality(session.data.nationality);
+  if (session.data.birthPlace) session.data.birthPlace = normalizeBirthPlace(session.data.birthPlace);
   const lang = session.lang || 'de';
   session.step = 'done';
   const ackMsgs = {
@@ -522,6 +501,26 @@ bot.catch((err, ctx) => {
 
 async function startBot() {
   console.log('🤖 AbmeldeBot iniciando...');
+
+  // DSGVO: Auto-delete files older than 7 days
+  const pdfDir = path.join(BOT_DIR, 'pdfs');
+  const archiveDir = path.join(BOT_DIR, 'pdfs', 'archive');
+  [pdfDir, archiveDir].forEach(dir => {
+    if (!fs.existsSync(dir)) return;
+    fs.readdirSync(dir).forEach(file => {
+      if (!/\.(pdf|jpg|png)$/i.test(file)) return;
+      const fp = path.join(dir, file);
+      try {
+        const stat = fs.statSync(fp);
+        if (!stat.isFile()) return;
+        if (Date.now() - stat.mtimeMs > 7 * 24 * 3600 * 1000) {
+          fs.unlinkSync(fp);
+          console.log(`🗑 DSGVO: Deleted (>7d): ${file}`);
+        }
+      } catch(_) {}
+    });
+  });
+
   // Start Express dashboard server first
   try { await startServer(); } catch(e) { console.error('⚠️ Dashboard server error (non-fatal):', e.message); }
   try { await bot.telegram.deleteWebhook({ drop_pending_updates: true }); console.log('🧹 Webhook limpo'); } catch(e) {}

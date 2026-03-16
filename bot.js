@@ -143,10 +143,14 @@ bot.command('cancel', (ctx) => { const s = getSession(ctx.chat.id); deleteSessio
 bot.command('help', (ctx) => { const s = getSession(ctx.chat.id); ctx.reply(t(s, 'help'), { parse_mode: 'Markdown' }); });
 
 // [TEST] Comando para testes rápidos
+// /test       → DIY, sigMode self, vai direto ao resumo
+// /test sig   → Full, sigMode paste, pede foto da assinatura
 bot.command('test', async (ctx) => {
   sessions.delete(ctx.chat.id);
   const session = createSession(ctx.chat.id);
-  session.lang = 'pt'; session.step = null;
+  session.lang = 'pt';
+  const arg = (ctx.message.text || '').split(/\s+/)[1] || '';
+  const wantSig = arg.toLowerCase() === 'sig';
   session.data = {
     firstName: 'João', lastName: 'Silva', birthDate: '15.03.1990', birthPlace: 'São Paulo',
     gender: 'männlich', nationality: 'Brasilianisch',
@@ -154,11 +158,19 @@ bot.command('test', async (ctx) => {
     moveOutDate: '31.03.2026', newStreet: 'Rua das Flores 123', newPlzCity: '01310-100 São Paulo',
     newCountry: 'Brasilien', newFullAddress: 'Rua das Flores 123, 01310-100 São Paulo, Brasilien',
     bisherigWohnungTyp: 'Alleinige Wohnung', neueWohnungExistiert: 'nein',
-    email: 'test@test.com', phone: '+49 155 12345678', service: 'diy', sigMode: 'self',
+    email: 'f.reichel@me.com', phone: '+49 155 60245902',
+    service: wantSig ? 'full' : 'diy',
+    sigMode: wantSig ? 'paste' : 'self',
     orderId: 'TEST-' + Date.now(),
   };
-  await ctx.reply('🧪 *Modo de teste ativado!*\nDados de teste pré-preenchidos.', { parse_mode: 'Markdown' });
-  await showSummary(ctx, session);
+  if (wantSig) {
+    session.step = 'signature';
+    await ctx.reply('🧪 *Modo de teste (Full + assinatura)*\nDados pré-preenchidos.\n\n✍️ Envie agora uma *foto da sua assinatura*.', { parse_mode: 'Markdown' });
+  } else {
+    session.step = null;
+    await ctx.reply('🧪 *Modo de teste (DIY)*\nDados de teste pré-preenchidos.', { parse_mode: 'Markdown' });
+    await showSummary(ctx, session);
+  }
 });
 
 // ─── ACTIONS ────────────────────────────────────────────────────────────

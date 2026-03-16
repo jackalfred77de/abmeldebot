@@ -292,6 +292,24 @@ async function processCaseToSharePoint(session, pdfPath, vollmachtPath, bot) {
       fileUrls.anmeldung = await uploadTelegramPhoto(orderId, data.anmeldungFileId, 'anmeldung_anterior.jpg', bot);
     }
 
+    // Upload documentos dos familiares
+    const familyMembers = data.familyMembers || [];
+    for (let i = 0; i < familyMembers.length; i++) {
+      const fm = familyMembers[i];
+      if (!fm || typeof fm !== 'object') continue;
+      const num = i + 2;
+      if (fm.docFrontFileId && bot) {
+        fileUrls[`family${num}DocFront`] = await uploadTelegramPhoto(orderId, fm.docFrontFileId, `familiar${num}_doc_frente.jpg`, bot);
+      } else if (fm.docFrontImage) {
+        fileUrls[`family${num}DocFront`] = await uploadBase64(orderId, fm.docFrontImage, `familiar${num}_doc_frente.jpg`);
+      }
+      if (fm.docBackFileId && bot) {
+        fileUrls[`family${num}DocBack`] = await uploadTelegramPhoto(orderId, fm.docBackFileId, `familiar${num}_doc_verso.jpg`, bot);
+      } else if (fm.docBackImage) {
+        fileUrls[`family${num}DocBack`] = await uploadBase64(orderId, fm.docBackImage, `familiar${num}_doc_verso.jpg`);
+      }
+    }
+
     // 4. Criar entrada no ledger
     const listItemId = await createLedgerEntry(session, fileUrls);
 

@@ -160,10 +160,21 @@ def fill_pdf(data: dict, output_path: str):
     # Familiares (Person 2 e 3) — só preenche se existirem
     family_members = data.get('FamilyMembers', [])
     for idx, member in enumerate(family_members[:2]):
-        if not member or not str(member).strip():
+        if not member:
             continue
         n = idx + 2
-        parts = str(member).split(',')
+        # Suporta tanto string (legado) como dict (novo)
+        if isinstance(member, dict):
+            raw = member.get('raw', '')
+            gender = normalize(member.get('gender', ''), GENDER_MAP)
+            nat = normalize(member.get('nationality', ''), NATIONALITY_MAP)
+        else:
+            raw = str(member)
+            gender = ''
+            nat = ''
+        if not raw.strip():
+            continue
+        parts = raw.split(',')
         name_raw = parts[0].strip()       # ex: "Maria Silva"
         dob_raw  = parts[1].strip() if len(parts) > 1 else ''
         # Separar nome e sobrenome: última palavra = sobrenome
@@ -174,13 +185,17 @@ def fill_pdf(data: dict, output_path: str):
             fam_fields = {
                 "Person 2 Familienmitglied ist Familienname ggf Doktorgrad": ln,
                 "Person 2 Familienmitglied ist Vornamen Rufnamen unterstreichen": fn,
+                "Person 2 Familienmitglied istGeschlecht": gender,
                 "Person 2 Familienmitglied ist Tag Ort Land der Geburt": dob_raw,
+                "Person 2 Familienmitglied ist Staatsangehörigkeiten": nat,
             }
         else:
             fam_fields = {
                 "Person 3 Familienmitglied ist Familienname ggf Doktorgrad": ln,
                 "Person 3 Familienmitglied ist Vornamen Rufnamen unterstreichen": fn,
+                "Person 3 Familienmitglied ist Geschlecht": gender,
                 "Person 3 Familienmitglied ist Tag Ort Land der Geburt": dob_raw,
+                "Person 3 Familienmitglied istStaatsangehörigkeiten": nat,
             }
         text_fields.update(fam_fields)
 

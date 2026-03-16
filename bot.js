@@ -343,12 +343,31 @@ async function askSigMode(ctx, session) {
     [Markup.button.callback(t(session, 'sig_mode_paste'), 'sig_paste')],
   ]));
 }
+async function askFamilyDocType(ctx, session) {
+  const memberNum = (session.data.familyMembers || []).length;
+  session.step = 'family_doc_type';
+  await ctx.reply(t(session, 'ask_family_doc_type').replace('{n}', memberNum), Markup.inlineKeyboard([
+    [Markup.button.callback(t(session, 'family_doc_passport'), 'fdoc_passport')],
+    [Markup.button.callback(t(session, 'family_doc_id'), 'fdoc_id')],
+  ]));
+}
+async function finishFamilyMember(ctx, session) {
+  const members = session.data.familyMembers || [];
+  const lastMember = members[members.length - 1];
+  const canAdd = members.length < 2;
+  const label = typeof lastMember === 'object' ? `${lastMember.raw} (${lastMember.gender}, ${lastMember.nationality})` : lastMember;
+  await ctx.reply(`✅ ${label}`, canAdd ? Markup.inlineKeyboard([[Markup.button.callback(t(session,'family_add_more'),'family_add_more')],[Markup.button.callback(t(session,'family_done'),'family_done')]]) : Markup.inlineKeyboard([[Markup.button.callback(t(session,'family_done'),'family_done')]]));
+}
 
 // ─── BUTTON HANDLERS ────────────────────────────────────────────────────
 bot.action('family_no', async (ctx) => { await ctx.answerCbQuery(); await askSigMode(ctx, getSession(ctx.chat.id)); });
 bot.action('family_yes', async (ctx) => { const s = getSession(ctx.chat.id); if (!s.data.familyMembers) s.data.familyMembers = []; s.step = 'family_name'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_family_name').replace('{n}', s.data.familyMembers.length + 1)); });
 bot.action('family_add_more', async (ctx) => { const s = getSession(ctx.chat.id); if (s.data.familyMembers && s.data.familyMembers.length >= 2) { await ctx.answerCbQuery(); await askSigMode(ctx, s); return; } s.step = 'family_name'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_family_name').replace('{n}', (s.data.familyMembers || []).length + 1)); });
 bot.action('family_done', async (ctx) => { await ctx.answerCbQuery(); await askSigMode(ctx, getSession(ctx.chat.id)); });
+bot.action(/fgender_([mfd])/, async (ctx) => { const s = getSession(ctx.chat.id); const map = { m: 'männlich', f: 'weiblich', d: 'divers' }; s.data._tempFamilyGender = map[ctx.match[1]]; s.step = 'family_nationality'; await ctx.answerCbQuery(); const memberNum = (s.data.familyMembers || []).length + 1; const natText = t(s, 'ask_family_nationality').replace('{n}', memberNum); const buttons = s.data.nationality ? Markup.inlineKeyboard([[Markup.button.callback(t(s, 'family_same_nationality') + ` (${s.data.nationality})`, 'fnat_same')]]) : undefined; await ctx.reply(natText, buttons); });
+bot.action('fnat_same', async (ctx) => { const s = getSession(ctx.chat.id); if (!s.data.familyMembers) s.data.familyMembers = []; const nat = s.data.nationality || ''; s.data.familyMembers.push({ raw: s.data._tempFamilyRaw, gender: s.data._tempFamilyGender || '', nationality: nat }); delete s.data._tempFamilyRaw; delete s.data._tempFamilyGender; await ctx.answerCbQuery(); await askFamilyDocType(ctx, s); });
+bot.action('fdoc_passport', async (ctx) => { const s = getSession(ctx.chat.id); const idx = (s.data.familyMembers || []).length; if (idx > 0 && typeof s.data.familyMembers[idx-1] === 'object') s.data.familyMembers[idx-1].docType = 'passport'; s.step = 'family_doc_front'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_family_doc_front').replace('{n}', idx)); });
+bot.action('fdoc_id', async (ctx) => { const s = getSession(ctx.chat.id); const idx = (s.data.familyMembers || []).length; if (idx > 0 && typeof s.data.familyMembers[idx-1] === 'object') s.data.familyMembers[idx-1].docType = 'id'; s.step = 'family_doc_front'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_family_doc_front').replace('{n}', idx)); });
 bot.action('sig_self', async (ctx) => { const s = getSession(ctx.chat.id); s.data.sigMode = 'self'; await ctx.answerCbQuery(); await showSummary(ctx, s); });
 bot.action('sig_paste', async (ctx) => { const s = getSession(ctx.chat.id); s.data.sigMode = 'paste'; s.step = 'signature'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_signature')); });
 bot.action(/wtyp_(.+)/, async (ctx) => { const s = getSession(ctx.chat.id); s.data.bisherigWohnungTyp = ctx.match[1].charAt(0).toUpperCase() + ctx.match[1].slice(1); s.step = 'neue_existiert'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_neue_existiert'), Markup.inlineKeyboard([[Markup.button.callback(t(s,'neue_nein'),'nexist_nein')],[Markup.button.callback(t(s,'neue_haupt'),'nexist_haupt')],[Markup.button.callback(t(s,'neue_neben'),'nexist_neben')]])); });
@@ -411,7 +430,9 @@ bot.on('text', async (ctx) => {
     case 'newaddress_country': session.data.newCountry = text; session.data.newFullAddress = `${session.data.newStreet}, ${session.data.newPlzCity}, ${session.data.newCountry}`; session.step = 'wohnungtyp'; await ctx.reply(t(session, 'ask_wohnungtyp'), Markup.inlineKeyboard([[Markup.button.callback(t(session,'wohnungtyp_alleinige'),'wtyp_alleinige')],[Markup.button.callback(t(session,'wohnungtyp_haupt'),'wtyp_haupt')],[Markup.button.callback(t(session,'wohnungtyp_neben'),'wtyp_neben')]])); break;
     case 'email': if (!isValidEmail(text)) { await ctx.reply(t(session, 'invalid_email')); return; } session.data.email = text; session.step = 'phone'; await ctx.reply(t(session, 'ask_phone')); break;
     case 'phone': session.data.phone = text; session.step = 'id_front'; await ctx.reply(t(session, 'ask_id_front')); break;
-    case 'family_name': if (!session.data.familyMembers) session.data.familyMembers = []; session.data.familyMembers.push(text); { const canAdd = session.data.familyMembers.length < 2; await ctx.reply(`✅ ${text}`, canAdd ? Markup.inlineKeyboard([[Markup.button.callback(t(session,'family_add_more'),'family_add_more')],[Markup.button.callback(t(session,'family_done'),'family_done')]]) : Markup.inlineKeyboard([[Markup.button.callback(t(session,'family_done'),'family_done')]])); } break;
+    case 'family_name': if (!session.data.familyMembers) session.data.familyMembers = []; session.data._tempFamilyRaw = text; session.step = 'family_gender'; { const memberNum = session.data.familyMembers.length + 1; await ctx.reply(t(session, 'ask_family_gender').replace('{n}', memberNum), Markup.inlineKeyboard([[Markup.button.callback('♂ männlich / masculino / male','fgender_m')],[Markup.button.callback('♀ weiblich / feminino / female','fgender_f')],[Markup.button.callback('⚧ divers / outro / other','fgender_d')]])); } break;
+    case 'family_gender': session.data._tempFamilyGender = text; session.step = 'family_nationality'; { const memberNum = session.data.familyMembers.length + 1; const natText = t(session, 'ask_family_nationality').replace('{n}', memberNum); const buttons = session.data.nationality ? Markup.inlineKeyboard([[Markup.button.callback(t(session, 'family_same_nationality') + ` (${session.data.nationality})`, 'fnat_same')]]) : undefined; await ctx.reply(natText, buttons); } break;
+    case 'family_nationality': { if (!session.data.familyMembers) session.data.familyMembers = []; const natVal = normalizeNationality(text); session.data.familyMembers.push({ raw: session.data._tempFamilyRaw, gender: session.data._tempFamilyGender || '', nationality: natVal }); delete session.data._tempFamilyRaw; delete session.data._tempFamilyGender; await askFamilyDocType(ctx, session); } break;
   }
 });
 
@@ -428,6 +449,8 @@ bot.on('photo', async (ctx) => {
     case 'id_front': session.data.idFrontImage = base64Image; session.data.idFrontFileId = photo.file_id; await ctx.reply(t(session, 'id_front_received')); session.step = 'id_back'; await ctx.reply(t(session, 'ask_id_back')); break;
     case 'id_back': session.data.idBackImage = base64Image; session.data.idBackFileId = photo.file_id; await ctx.reply(t(session, 'id_back_received')); session.step = 'anmeldung'; await ctx.reply(t(session, 'ask_anmeldung'), Markup.inlineKeyboard([[Markup.button.callback(t(session,'skip_doc'),'skip_anmeldung')]])); break;
     case 'anmeldung': { const afid = ctx.message.photo ? ctx.message.photo[ctx.message.photo.length-1].file_id : null; if (afid) { session.data.anmeldungFileId = afid; await ctx.reply('✅ Anmeldung recebida!'); } await askFamily(ctx, session); break; }
+    case 'family_doc_front': { const members = session.data.familyMembers || []; const idx = members.length - 1; if (idx >= 0 && typeof members[idx] === 'object') { members[idx].docFrontFileId = photo.file_id; members[idx].docFrontImage = base64Image; } await ctx.reply(t(session, 'family_doc_received')); if (idx >= 0 && typeof members[idx] === 'object' && members[idx].docType === 'id') { session.step = 'family_doc_back'; await ctx.reply(t(session, 'ask_family_doc_back').replace('{n}', idx + 1)); } else { await finishFamilyMember(ctx, session); } break; }
+    case 'family_doc_back': { const members2 = session.data.familyMembers || []; const idx2 = members2.length - 1; if (idx2 >= 0 && typeof members2[idx2] === 'object') { members2[idx2].docBackFileId = photo.file_id; members2[idx2].docBackImage = base64Image; } await ctx.reply(t(session, 'family_doc_received')); await finishFamilyMember(ctx, session); break; }
   }
 });
 
@@ -461,6 +484,8 @@ bot.on('document', async (ctx) => {
     case 'id_front': session.data.idFrontImage = base64Image; session.data.idFrontFileId = doc.file_id; await ctx.reply(t(session, 'id_front_received')); session.step = 'id_back'; await ctx.reply(t(session, 'ask_id_back')); break;
     case 'id_back': session.data.idBackImage = base64Image; session.data.idBackFileId = doc.file_id; await ctx.reply(t(session, 'id_back_received')); session.step = 'anmeldung'; await ctx.reply(t(session, 'ask_anmeldung'), Markup.inlineKeyboard([[Markup.button.callback(t(session,'skip_doc'),'skip_anmeldung')]])); break;
     case 'anmeldung': session.data.anmeldungFileId = doc.file_id; await ctx.reply('✅ Anmeldung recebida!'); await askFamily(ctx, session); break;
+    case 'family_doc_front': { const members = session.data.familyMembers || []; const idx = members.length - 1; if (idx >= 0 && typeof members[idx] === 'object') { members[idx].docFrontFileId = doc.file_id; members[idx].docFrontImage = base64Image; } await ctx.reply(t(session, 'family_doc_received')); if (idx >= 0 && typeof members[idx] === 'object' && members[idx].docType === 'id') { session.step = 'family_doc_back'; await ctx.reply(t(session, 'ask_family_doc_back').replace('{n}', idx + 1)); } else { await finishFamilyMember(ctx, session); } break; }
+    case 'family_doc_back': { const members2 = session.data.familyMembers || []; const idx2 = members2.length - 1; if (idx2 >= 0 && typeof members2[idx2] === 'object') { members2[idx2].docBackFileId = doc.file_id; members2[idx2].docBackImage = base64Image; } await ctx.reply(t(session, 'family_doc_received')); await finishFamilyMember(ctx, session); break; }
     case 'vollmacht': session.data.vollmachtFileId = doc.file_id; await ctx.reply('✅ Vollmacht recebida!'); session.ctx = ctx; await triggerPowerAutomate(session); await ctx.reply(t(session, 'done_message')); session.step = 'done'; break;
   }
 });
@@ -471,7 +496,7 @@ async function showSummary(ctx, session) {
   const serviceLabel = data.service === 'full' ? 'Full Service (€39.99)' : 'DIY (€4.99)';
   const newAddr = data.newFullAddress || [data.newStreet, data.newPlzCity, data.newCountry].filter(Boolean).join(', ');
   let familySummary = '';
-  if (data.familyMembers && data.familyMembers.length > 0) { familySummary = '👨‍👩‍👧 Familienmitglieder:\n' + data.familyMembers.map((m, i) => `  ${i+2}. ${m}`).join('\n') + '\n\n'; }
+  if (data.familyMembers && data.familyMembers.length > 0) { familySummary = '👨‍👩‍👧 Familienmitglieder:\n' + data.familyMembers.map((m, i) => { if (typeof m === 'object') return `  ${i+2}. ${m.raw} (${m.gender || '?'}, ${m.nationality || '?'})`; return `  ${i+2}. ${m}`; }).join('\n') + '\n\n'; }
   const summary = t(session, 'summary')
     .replace('{firstName}', data.firstName || '–').replace('{lastName}', data.lastName || '–')
     .replace('{birthDate}', data.birthDate || '–').replace('{birthPlace}', data.birthPlace || '–')

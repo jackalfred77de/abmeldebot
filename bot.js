@@ -287,7 +287,7 @@ async function triggerPowerAutomate(session) {
       try { await bot.telegram.sendDocument(ADMIN_CHAT_ID, { source: session._vollmachtPath, filename: `Vollmacht_${session.data.orderId}.pdf` }, { caption: `📜 Vollmacht — ${session.data.firstName} ${session.data.lastName}` }); } catch(e) { console.log('Vollmacht admin error:', e.message); }
     }
     if (session.data.anmeldungFileId) { try { await bot.telegram.sendDocument(ADMIN_CHAT_ID, session.data.anmeldungFileId); } catch(e) { console.log('Anmeldung forward error:', e.message); } }
-    if (session.data.service === 'full' && session.data.sigMode === 'paste' && session._vollmachtPath && fs.existsSync(session._vollmachtPath)) {
+    if (session.data.service === 'full' && session.data.sigMode === 'paste' && session._vollmachtPath && fs.existsSync(session._vollmachtPath) && String(session.chatId) !== String(ADMIN_CHAT_ID)) {
       try {
         const lang = session.lang || 'de';
         const vollmachtCaption = { de: '📜 *Ihre Vollmacht*\n\nBitte unterschreiben und an unser Büro senden.', pt: '📜 *Sua Procuração*\n\nPor favor assine e envie para o nosso escritório.', en: '📜 *Your Power of Attorney*\n\nPlease sign and send to our office.' };

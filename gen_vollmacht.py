@@ -80,6 +80,9 @@ def get_lang_key(lang_str):
 
 def enhance_sig(b64):
     try:
+        # Strip data URI prefix if present (e.g. 'data:image/jpeg;base64,...')
+        if ',' in b64:
+            b64 = b64.split(',', 1)[1]
         raw = base64.b64decode(b64)
         pix = fitz.Pixmap(raw)
         if pix.n > 2:

@@ -51,7 +51,7 @@ const { NATIONALITY_MAP, normalizeNationality, normalizeBirthPlace } = require('
 const { PLZ_MAP, getBezirk } = require('./plz_map');
 const translations = require('./translations');
 const { getGraphToken, sendAbmeldungEmail } = require('./email');
-const { startServer } = require('./server');
+const { app: expressApp, startServer } = require('./server');
 const { startInboxMonitor } = require('./inbox_monitor');
 
 // Helper functions
@@ -892,21 +892,43 @@ async function startBot() {
 
   // Start inbox monitor (polls for Bürgeramt responses)
   try { startInboxMonitor(bot); } catch(e) { console.error('⚠️ InboxMonitor start error (non-fatal):', e.message); }
-  try { await bot.telegram.deleteWebhook({ drop_pending_updates: true }); console.log('🧹 Webhook limpo'); } catch(e) { console.error('Webhook err:', e.message); }
-  console.log('🚀 Calling bot.launch()...');
-  // DEBUG: test getUpdates manually before launch
+  // ── WEBHOOK MODE (Azure App Service) ──────────────────────────────────
+  const WEBHOOK_DOMAIN = process.env.WEBHOOK_DOMAIN || 'https://rafer-abmeldebot-c8deh4gcg4g4h0bu.westeurope-01.azurewebsites.net';
+  const WEBHOOK_PATH = `/webhook/${BOT_TOKEN}`;
+  const WEBHOOK_URL = `${WEBHOOK_DOMAIN}${WEBHOOK_PATH}`;
+
+  // DEBUG: test API access
   try {
     const me = await bot.telegram.getMe();
     console.log('🤖 getMe OK:', me.username, me.id);
-    const testUpdates = await bot.telegram.callApi('getUpdates', { limit: 1, timeout: 2 });
-    console.log('📡 getUpdates test: got', testUpdates.length, 'updates');
   } catch(e) { console.error('❌ API test error:', e.message); }
+
   try {
-    await bot.launch({ dropPendingUpdates: true, allowedUpdates: ['message', 'callback_query'] });
-    console.log('✅ AbmeldeBot gestartet!'); console.log('📱 Jetzt in Telegram: /start');
+    // Register webhook route on the existing Express app
+    expressApp.use(bot.webhookCallback(WEBHOOK_PATH));
+    console.log('🔗 Webhook callback registered at', WEBHOOK_PATH);
+
+    // Set webhook with Telegram
+    await bot.telegram.setWebhook(WEBHOOK_URL, {
+      drop_pending_updates: true,
+      allowed_updates: ['message', 'callback_query'],
+    });
+    console.log('✅ Webhook set:', WEBHOOK_URL);
+    console.log('✅ AbmeldeBot gestartet (webhook mode)!');
+    console.log('📱 Jetzt in Telegram: /start');
   } catch(err) {
     if (err.message && err.message.includes('409')) { console.log('⚠️ 409 — saindo...'); process.exit(0); }
-    console.error('❌ Erro:', err.message); process.exit(0);
+    console.error('❌ Webhook setup error:', err.message);
+    // Fallback: try polling
+    console.log('🔄 Falling back to polling...');
+    try {
+      await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+      await bot.launch({ dropPendingUpdates: true, allowedUpdates: ['message', 'callback_query'] });
+      console.log('✅ AbmeldeBot gestartet (polling fallback)!');
+    } catch(err2) {
+      console.error('❌ Polling fallback also failed:', err2.message);
+      process.exit(0);
+    }
   }
 }
 startBot();

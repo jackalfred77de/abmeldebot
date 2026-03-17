@@ -695,7 +695,7 @@ async function startBot() {
   });
 
   // Start Express dashboard server first
-  try { await startServer(); } catch(e) { console.error('⚠️ Dashboard server error (non-fatal):', e.message); }
+  try { await startServer(bot); } catch(e) { console.error('⚠️ Dashboard server error (non-fatal):', e.message); }
   try { await bot.telegram.deleteWebhook({ drop_pending_updates: true }); console.log('🧹 Webhook limpo'); } catch(e) {}
   try {
     await bot.launch({ dropPendingUpdates: true, allowedUpdates: ['message', 'callback_query'] });

@@ -258,6 +258,7 @@ tbody td {
 .badge-email_sent { background: var(--blue-bg); color: var(--blue); }
 .badge-pending_review { background: var(--yellow-bg); color: var(--yellow); }
 .badge-submitted_to_behoerde { background: var(--orange-bg); color: var(--orange); }
+.badge-sent_to_amt { background: #e0f2fe; color: #0369a1; }
 .badge-completed { background: var(--green-bg); color: var(--green); }
 .badge-rejected { background: var(--red-bg); color: var(--red); }
 .badge-on_hold { background: var(--gray-bg); color: var(--gray); }
@@ -567,6 +568,7 @@ tbody td {
         <option value="email_sent">Email Sent</option>
         <option value="pending_review">Pending Review</option>
         <option value="submitted_to_behoerde">Submitted</option>
+        <option value="sent_to_amt">Sent to Amt</option>
         <option value="completed">Completed</option>
         <option value="rejected">Rejected</option>
         <option value="on_hold">On Hold</option>
@@ -664,7 +666,7 @@ function shortDate(iso) {
 function statusLabel(s) {
   const map = {
     created: 'Created', pdf_generated: 'PDF Generated', email_sent: 'Email Sent',
-    pending_review: 'Pending Review', submitted_to_behoerde: 'Submitted', completed: 'Completed',
+    pending_review: 'Pending Review', submitted_to_behoerde: 'Submitted', sent_to_amt: 'Sent to Amt', completed: 'Completed',
     rejected: 'Rejected', on_hold: 'On Hold', cancelled: 'Cancelled'
   };
   return map[s] || s || '–';
@@ -769,7 +771,7 @@ function populateBezirkFilter() {
 function updateCounters() {
   $('cntTotal').textContent = allCases.length;
   $('cntPending').textContent = allCases.filter(c => ['created','pdf_generated','email_sent','pending_review'].includes(c.Status)).length;
-  $('cntSubmitted').textContent = allCases.filter(c => c.Status === 'submitted_to_behoerde').length;
+  $('cntSubmitted').textContent = allCases.filter(c => c.Status === 'submitted_to_behoerde' || c.Status === 'sent_to_amt').length;
   $('cntCompleted').textContent = allCases.filter(c => c.Status === 'completed').length;
 }
 
@@ -944,6 +946,7 @@ function renderSidebar(c) {
   $('sidebarActions').innerHTML = `
     <div class="action-buttons">
       <button class="btn-action btn-submit" onclick="updateStatus('submitted_to_behoerde')" ${isFinal ? 'disabled' : ''}>📤 Einreichen</button>
+      ${(c.Service === 'full' && c.Status === 'submitted_to_behoerde') ? '<button class="btn-action" style="background:#0369a1;color:#fff;" onclick="previewAmtEmail()">📬 An Bürgeramt senden</button>' : ''}
       <button class="btn-action btn-approve" onclick="updateStatus('completed')" ${isFinal ? 'disabled' : ''}>✓ Abschließen</button>
       <button class="btn-action btn-reject" onclick="updateStatus('rejected')" ${isFinal ? 'disabled' : ''}>✗ Ablehnen</button>
       <button class="btn-action btn-hold" onclick="updateStatus('on_hold')" ${isFinal ? 'disabled' : ''}>⏸ Halten</button>
@@ -1006,6 +1009,53 @@ if (TOKEN) {
   fetchCases();
   startAutoRefresh();
 }
+
+async function previewAmtEmail() {
+  if (!selectedOrderId) return;
+  try {
+    const data = await apiCall('GET', '/api/cases/' + selectedOrderId + '/preview-amt-email');
+    if (!data.success) { showToast('Fehler: ' + (data.error || 'Vorschau fehlgeschlagen'), 'error'); return; }
+    $('amtPreviewMeta').innerHTML = '<strong>An:</strong> ' + esc(data.to) + '<br/><strong>Betreff:</strong> ' + esc(data.subject) + '<br/><strong>Bezirk:</strong> ' + esc(data.bezirk);
+    $('amtPreviewBody').innerHTML = data.htmlBody;
+    $('amtModal').style.display = 'flex';
+  } catch (e) { showToast('Fehler: ' + e.message, 'error'); }
+}
+function closeAmtModal() { $('amtModal').style.display = 'none'; }
+async function confirmSendToAmt() {
+  if (!selectedOrderId) return;
+  $('amtSendBtn').disabled = true;
+  $('amtSendBtn').textContent = 'Wird gesendet...';
+  try {
+    const data = await apiCall('POST', '/api/cases/' + selectedOrderId + '/send-to-amt');
+    if (data.success) {
+      showToast('Email an Bürgeramt ' + (data.bezirk || '') + ' gesendet (' + (data.attachmentCount || 0) + ' Anhänge)');
+      closeAmtModal();
+      await fetchCases();
+    } else {
+      showToast('Fehler: ' + (data.error || 'Senden fehlgeschlagen'), 'error');
+    }
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  } finally {
+    $('amtSendBtn').disabled = false;
+    $('amtSendBtn').textContent = '📬 Jetzt senden';
+  }
+}
 </script>
+
+
+<!-- Bürgeramt Email Preview Modal -->
+<div id="amtModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:2000;justify-content:center;align-items:center;">
+  <div style="background:#fff;border-radius:12px;max-width:720px;width:90%;max-height:85vh;overflow-y:auto;padding:32px;position:relative;">
+    <button onclick="closeAmtModal()" style="position:absolute;top:12px;right:16px;background:none;border:none;font-size:24px;cursor:pointer;">&times;</button>
+    <h3 style="margin:0 0 8px;">📬 E-Mail-Vorschau: Bürgeramt</h3>
+    <div id="amtPreviewMeta" style="font-size:13px;color:#666;margin-bottom:16px;"></div>
+    <div id="amtPreviewBody" style="border:1px solid #e0e0e0;border-radius:8px;padding:24px;background:#fafafa;"></div>
+    <div style="margin-top:20px;display:flex;gap:12px;justify-content:flex-end;">
+      <button onclick="closeAmtModal()" style="padding:10px 20px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer;">Abbrechen</button>
+      <button id="amtSendBtn" onclick="confirmSendToAmt()" style="padding:10px 24px;border:none;border-radius:8px;background:#0369a1;color:#fff;font-weight:600;cursor:pointer;">📬 Jetzt senden</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

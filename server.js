@@ -119,6 +119,64 @@ app.post('/api/cases/:orderId/notes', authMiddleware, async (req, res) => {
   }
 });
 
+
+
+// ── Bürgeramt email: preview ────────────────────────────────────────────────
+app.get('/api/cases/:orderId/preview-amt-email', authMiddleware, async (req, res) => {
+  try {
+    const { sendToBuergeramt } = require('./email');
+    const caseData = await SP.getCase(req.params.orderId);
+    if (!caseData) return res.status(404).json({ error: 'Case not found' });
+    if (caseData.Service !== 'full') return res.status(400).json({ error: 'Nur für Full Service Fälle' });
+    const result = await sendToBuergeramt(caseData, { dryRun: true });
+    res.json(result);
+  } catch (err) {
+    console.error('API preview-amt-email error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Bürgeramt email: send ───────────────────────────────────────────────────
+app.post('/api/cases/:orderId/send-to-amt', authMiddleware, async (req, res) => {
+  try {
+    const { sendToBuergeramt } = require('./email');
+    const caseData = await SP.getCase(req.params.orderId);
+    if (!caseData) return res.status(404).json({ error: 'Case not found' });
+    if (caseData.Service !== 'full') return res.status(400).json({ error: 'Nur für Full Service Fälle' });
+
+    const result = await sendToBuergeramt(caseData, { dryRun: false });
+    if (!result.success) return res.status(500).json(result);
+
+    // Update SharePoint status + timeline
+    const now = new Date().toISOString();
+    await SP.updateCaseStatus(
+      req.params.orderId,
+      'sent_to_amt',
+      'Email an Bürgeramt ' + (result.bezirk || '') + ' gesendet am ' + now.split('T')[0] + ' (' + (result.to || '') + ')'
+    );
+
+    // Notify client via Telegram
+    const chatId = caseData.ChatId;
+    if (chatId) {
+      const lang = caseData.Language || 'de';
+      const tgBot = req.app.get('telegramBot');
+      if (tgBot) {
+        const msgs = {
+          de: '📬 Ihre Abmeldung (' + req.params.orderId + ') wurde soeben an das Bürgeramt ' + (result.bezirk || 'Berlin') + ' gesendet. Wir informieren Sie, sobald wir eine Bestätigung erhalten.',
+          pt: '📬 Sua Abmeldung (' + req.params.orderId + ') foi enviada ao Bürgeramt ' + (result.bezirk || 'Berlin') + '. Informaremos assim que recebermos a confirmação.',
+          en: '📬 Your Abmeldung (' + req.params.orderId + ') has been sent to the Bürgeramt ' + (result.bezirk || 'Berlin') + '. We will notify you once we receive confirmation.',
+        };
+        try { await tgBot.telegram.sendMessage(chatId, msgs[lang] || msgs.de); } catch (e) { console.log('Client notification error:', e.message); }
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('API send-to-amt error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Health check ────────────────────────────────────────────────────────────
 // ── DSGVO: Delete case (list item + folder) ─────────────────────────────────
 app.delete('/api/cases/:orderId', authMiddleware, async (req, res) => {
@@ -136,7 +194,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // ── Start server ────────────────────────────────────────────────────────────
-function startServer() {
+function startServer(telegramBot) {
+  if (telegramBot) app.set('telegramBot', telegramBot);
   return new Promise((resolve) => {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🌐 Dashboard server running on port ${PORT}`);

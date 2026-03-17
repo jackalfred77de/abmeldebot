@@ -258,7 +258,7 @@ bot.action(/lang_(.+)/, (ctx) => {
 
 bot.action('service_diy', async (ctx) => { const s = getSession(ctx.chat.id); s.data.service = 'diy'; s.step = 'consent'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'privacy_consent'), { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback(t(s, 'consent_yes'), 'consent_yes')],[Markup.button.callback(t(s, 'consent_no'), 'consent_no')]]) }); });
 bot.action('service_full', async (ctx) => { const s = getSession(ctx.chat.id); s.data.service = 'full'; s.step = 'consent'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'privacy_consent'), { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback(t(s, 'consent_yes'), 'consent_yes')],[Markup.button.callback(t(s, 'consent_no'), 'consent_no')]]) }); });
-bot.action('consent_yes', async (ctx) => { const s = getSession(ctx.chat.id); s.data.consentGiven = true; s.data.consentAt = new Date().toISOString(); s.step = 'firstname'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_firstname'), { parse_mode: 'Markdown' }); });
+bot.action('consent_yes', async (ctx) => { const s = getSession(ctx.chat.id); s.data.consentGiven = true; s.data.consentAt = new Date().toISOString(); s.step = 'firstname'; console.log('✅ consent_yes [chat=' + ctx.chat.id + '] step set to firstname, session keys:', Object.keys(s.data).join(',')); await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_firstname'), { parse_mode: 'Markdown' }); });
 bot.action('consent_no', async (ctx) => { const s = getSession(ctx.chat.id); await ctx.answerCbQuery(); await ctx.reply(t(s, 'consent_declined'), { parse_mode: 'Markdown' }); deleteSession(ctx.chat.id); });
 
 const PAYMENT_URL = {
@@ -643,6 +643,7 @@ bot.action(/admin_hold_(.+)/, async (ctx) => {
 bot.on('text', async (ctx) => {
   const session = getSession(ctx.chat.id);
   const text = ctx.message.text.trim();
+  console.log('📝 TEXT [chat=' + ctx.chat.id + ', step=' + session.step + ', lang=' + session.lang + ']: ' + text.substring(0, 60));
   if (text.startsWith('/')) return;
 
   // Check if this is an admin rejection reason

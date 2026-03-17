@@ -206,7 +206,7 @@ async function sendToBuergeramt(caseData, opts = {}) {
     '<li>Vollmacht</li>' +
     '<li>Kopie des Ausweisdokuments ' + meiner + ' ' + mandanten + '</li></ol>' +
     '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
-    'Ich bitte um Bearbeitung und \u00dcbersendung der Abmeldebest\u00e4tigung an meine Kanzlei unter der oben genannten Adresse, per E-Mail oder per Fax an: 030 75439509</p>' +
+    'Ich bitte um Bearbeitung und \u00dcbersendung der Abmeldebest\u00e4tigung an meine Kanzlei unter der oben genannten Adresse, per E-Mail oder per Fax an:<br/><br/><strong>030 75439509</strong></p>' +
     '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">Mit freundlichen Gr\u00fc\u00dfen</p>' +
     '<table cellpadding="0" cellspacing="0" border="0" style="border-top:2px solid #000;padding-top:16px;margin-top:24px;font-family:Helvetica,Arial,sans-serif;">' +
     '<tr><td style="padding-bottom:12px;">' +

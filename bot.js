@@ -4,6 +4,16 @@
 // Load environment variables
 require('dotenv').config();
 
+// ─── DEBUG: In-memory log ring buffer ───────────────────────────────────
+const _logRing = [];
+const _LOG_MAX = 200;
+const _origLog = console.log;
+const _origErr = console.error;
+console.log = function(...args) { const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' '); _logRing.push('[' + new Date().toISOString() + ' LOG] ' + msg); if (_logRing.length > _LOG_MAX) _logRing.shift(); _origLog.apply(console, args); };
+console.error = function(...args) { const msg = args.map(a => typeof a === 'string' ? a : (a && a.stack ? a.stack : JSON.stringify(a))).join(' '); _logRing.push('[' + new Date().toISOString() + ' ERR] ' + msg); if (_logRing.length > _LOG_MAX) _logRing.shift(); _origErr.apply(console, args); };
+// Export for server.js access
+global._logRing = _logRing;
+
 const { Telegraf, Markup } = require('telegraf');
 const axios = require('axios');
 const { execFile, execFileSync } = require('child_process');

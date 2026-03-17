@@ -327,6 +327,14 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
 });
 
+// DEBUG: Log viewer endpoint (protected by password query param)
+app.get('/api/logs', (req, res) => {
+  if (req.query.pw !== process.env.DASHBOARD_PASSWORD) return res.status(401).send('Unauthorized');
+  const logs = global._logRing || [];
+  const n = parseInt(req.query.n) || 50;
+  res.type('text/plain').send(logs.slice(-n).join('\n'));
+});
+
 // ── Start server ────────────────────────────────────────────────────────────
 function startServer(telegramBot) {
   if (telegramBot) app.set('telegramBot', telegramBot);

@@ -175,8 +175,8 @@ async function sendToBuergeramt(caseData, opts = {}) {
   // Build family section if applicable
   let familyHtml = '';
   if (familyNames.length > 0) {
-    familyHtml = '<p>Die Abmeldung umfasst neben ' + herrnFrau + ' ' + firstName + ' ' + lastName + ' folgende Familienangeh\u00f6rige:</p>' +
-      '<ul style="margin:4px 0 16px 20px;">' +
+    familyHtml = '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">Die Abmeldung umfasst neben ' + herrnFrau + ' ' + firstName + ' ' + lastName + ' folgende Familienangeh\u00f6rige:</p>' +
+      '<ul style="margin:4px 0 16px 20px;font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
       familyNames.map(function(n) { return '<li>' + n + '</li>'; }).join('') +
       '</ul>';
   }

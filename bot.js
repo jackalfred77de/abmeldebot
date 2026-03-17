@@ -52,6 +52,12 @@ function t(session, key) {
 // DSGVO: Anthropic API removed — using local dictionaries only (nationality.js)
 
 // Gerar Vollmacht PDF via Python
+// Build pyEnv helper — ensures PYTHONPATH includes .python_packages
+function getPyEnv() {
+  const pyPkgDir = path.join(BOT_DIR, '.python_packages');
+  return { ...process.env, PYTHONPATH: [pyPkgDir, process.env.PYTHONPATH || ''].filter(Boolean).join(':') };
+}
+
 async function generateVollmacht(data) {
   const today = new Date();
   const datum = `${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()}`;
@@ -61,7 +67,7 @@ async function generateVollmacht(data) {
   const pythonScript = path.join(BOT_DIR, 'fill_abmeldung.py');
   const PYTHON_PATH = process.env.PYTHON_PATH || 'python3';
   return new Promise((resolve, reject) => {
-    execFile(PYTHON_PATH, [pythonScript, JSON.stringify(pdfData), outPath, 'vollmacht'], {timeout: 30000}, (err, stdout, stderr) => {
+    execFile(PYTHON_PATH, [pythonScript, JSON.stringify(pdfData), outPath, 'vollmacht'], {timeout: 30000, env: getPyEnv()}, (err, stdout, stderr) => {
       if (err) { console.error('Vollmacht error:', stderr); reject(err); return; }
       const match = stdout.match(/VOLLMACHT_OK:(.+)/);
       resolve(match ? match[1].trim() : outPath);
@@ -250,7 +256,8 @@ function generateAbmeldungPdf(session) {
     });
     const PYTHON3 = process.env.PYTHON_PATH || 'python3';
     const scriptPath = path.join(BOT_DIR, 'fill_abmeldung.py');
-    const pyEnv = { ...process.env };
+    const pyEnv = getPyEnv();
+    console.log('🐍 Python exec:', PYTHON3, '| PYTHONPATH:', pyEnv.PYTHONPATH);
     execFile(PYTHON3, [scriptPath, payload, outputPath], { env: pyEnv }, (err, stdout, stderr) => {
       if (err) { console.error('❌ fill_abmeldung.py error:', stderr); return reject(new Error(stderr || err.message)); }
       if (stdout.startsWith('OK:')) {
@@ -266,7 +273,7 @@ function generateAbmeldungPdf(session) {
                 Geburtsdatum: data.birthDate || '', Adresse: data.fullAddress || '', AuszugDatum: data.moveOutDate || '',
                 Language: session.lang || 'de', SignaturBase64: (data.sigMode === 'paste' && data.signatureImage) ? data.signatureImage : '',
               });
-              execFileSync(PYTHON3, [vollmachtScript, vollmachtData, vollmachtPath], { env: pyEnv, stdio: 'pipe' });
+              execFileSync(PYTHON3, [vollmachtScript, vollmachtData, vollmachtPath], { env: getPyEnv(), stdio: 'pipe' });
               session._vollmachtPath = vollmachtPath;
               console.log('✅ Vollmacht gerada:', vollmachtPath, '| lang:', session.lang);
             } catch(ve) { console.error('⚠️ Vollmacht gen error (non-fatal):', ve.message); }
@@ -296,7 +303,7 @@ async function buildIdPdf(frontBase64, backBase64, orderId) {
   const scriptPath = path.join(tmpDir, `build_id_${orderId}.py`);
   fs.writeFileSync(scriptPath, pyScript);
   await new Promise((resolve, reject) => {
-    execFile(PYTHON3, [scriptPath, ...paths, outPath], { timeout: 30000 }, (err, stdout, stderr) => {
+    execFile(PYTHON3, [scriptPath, ...paths, outPath], { timeout: 30000, env: getPyEnv() }, (err, stdout, stderr) => {
       try { fs.unlinkSync(scriptPath); } catch(_) {}
       paths.forEach(p => { try { fs.unlinkSync(p); } catch(_) {} });
       if (err) reject(new Error(stderr || err.message)); else resolve();
@@ -584,7 +591,7 @@ bot.on('document', async (ctx) => {
       const fileLink = await ctx.telegram.getFileLink(doc.file_id);
       const resp = await axios.get(fileLink.href, { responseType: 'arraybuffer' });
       fs.writeFileSync(tmpPdf, Buffer.from(resp.data));
-      execFileSync(PYTHON3, ['-c', "import fitz,sys; d=fitz.open(sys.argv[1]); mat=fitz.Matrix(2,2); pix=d[0].get_pixmap(matrix=mat); pix.save(sys.argv[2]); print('OK')", tmpPdf, tmpPng], { timeout: 20000 });
+      execFileSync(PYTHON3, ['-c', "import fitz,sys; d=fitz.open(sys.argv[1]); mat=fitz.Matrix(2,2); pix=d[0].get_pixmap(matrix=mat); pix.save(sys.argv[2]); print('OK')", tmpPdf, tmpPng], { timeout: 20000, env: getPyEnv() });
       base64Image = fs.readFileSync(tmpPng).toString('base64');
       try { fs.unlinkSync(tmpPdf); fs.unlinkSync(tmpPng); } catch(_) {}
     } catch(e) { console.error('PDF->image error:', e.message); await ctx.reply('❌ Erro ao processar PDF.'); return; }

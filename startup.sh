@@ -10,30 +10,17 @@ PY_PACKAGES="$APP_DIR/.python_packages"
 # Ensure PYTHONPATH is set for all child processes
 export PYTHONPATH="$PY_PACKAGES:${PYTHONPATH:-}"
 
-# Check if Python packages are already importable
+# Python packages are pre-installed by GitHub Actions into .python_packages/
+# Verify they are importable with PYTHONPATH set
 if python3 -c "import pypdf; import fitz; import reportlab" 2>/dev/null; then
-    echo "✅ Python packages already available"
+    echo "✅ Python packages available (pre-deployed)"
 else
-    echo "📦 Installing Python packages to $PY_PACKAGES ..."
+    echo "⚠️ Pre-deployed packages not found, attempting runtime install..."
     mkdir -p "$PY_PACKAGES"
-
-    # Try pip3, then pip, then python3 -m pip — install to --target
-    if pip3 install --target "$PY_PACKAGES" pypdf pymupdf reportlab 2>&1; then
-        echo "✅ pip3 --target install OK"
-    elif pip install --target "$PY_PACKAGES" pypdf pymupdf reportlab 2>&1; then
-        echo "✅ pip --target install OK"
-    elif python3 -m pip install --target "$PY_PACKAGES" pypdf pymupdf reportlab 2>&1; then
-        echo "✅ python3 -m pip --target install OK"
-    else
-        echo "⚠️ --target install failed, trying system-wide install..."
-        pip3 install pypdf pymupdf reportlab 2>&1 || \
-        pip install pypdf pymupdf reportlab 2>&1 || \
-        python3 -m pip install pypdf pymupdf reportlab 2>&1 || \
-        echo "❌ ALL pip install attempts failed!"
-    fi
-
-    echo "📋 Contents of $PY_PACKAGES:"
-    ls -la "$PY_PACKAGES/" 2>&1 | head -20
+    pip3 install --target "$PY_PACKAGES" pypdf pymupdf reportlab 2>&1 || \
+    python3 -m pip install --target "$PY_PACKAGES" pypdf pymupdf reportlab 2>&1 || \
+    pip3 install pypdf pymupdf reportlab 2>&1 || \
+    echo "❌ pip install failed! PDF generation will not work."
 fi
 
 # Verify imports with PYTHONPATH set

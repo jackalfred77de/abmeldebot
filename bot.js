@@ -209,6 +209,7 @@ bot.command('test', async (ctx) => {
     email: 'f.reichel@rafer.de', phone: '+49 155 60245902',
     service: wantSig ? 'full' : 'diy',
     sigMode: wantSig ? 'paste' : 'self',
+    deliveryMethod: 'email', postalAddress: '', postalFee: 0,
     orderId: 'TEST-' + Date.now(),
   };
   if (wantSig) {

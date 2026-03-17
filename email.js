@@ -50,6 +50,20 @@ async function sendAbmeldungEmail(toEmail, pdfPath, session, buildIdPdf) {
       contentBytes: fs.readFileSync(session._vollmachtPath).toString('base64'),
     });
   }
+  // Extra Abmeldung forms (for families >3 people)
+  if (session._extraAbmeldungPaths && session._extraAbmeldungPaths.length > 0) {
+    for (let i = 0; i < session._extraAbmeldungPaths.length; i++) {
+      const extraPath = session._extraAbmeldungPaths[i];
+      if (fs.existsSync(extraPath)) {
+        attachments.push({
+          '@odata.type': '#microsoft.graph.fileAttachment',
+          name: path.basename(extraPath),
+          contentType: 'application/pdf',
+          contentBytes: fs.readFileSync(extraPath).toString('base64'),
+        });
+      }
+    }
+  }
   if (!isDiy && (data.idFrontImage || data.idBackImage)) {
     try {
       const idPdfBytes = buildIdPdf ? await buildIdPdf(data.idFrontImage, data.idBackImage, orderId) : null;

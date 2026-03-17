@@ -198,7 +198,7 @@ bot.command('test', async (ctx) => {
   const arg = (ctx.message.text || '').split(/\s+/)[1] || '';
   const wantSig = arg.toLowerCase() === 'sig';
   session.data = {
-    firstName: 'João', lastName: 'Silva', birthDate: '15.03.1990', birthPlace: 'São Paulo',
+    firstName: 'João', lastName: 'Silva', birthDate: '15.03.1990', birthPlace: 'São Paulo', birthCountry: 'Brasilien',
     gender: 'männlich', nationality: 'Brasilianisch',
     fullAddress: 'Katzbachstr. 18, 10965 Berlin', plz: '10965', bezirk: 'Friedrichshain-Kreuzberg',
     moveOutDate: '31.03.2026', newStreet: 'Rua das Flores 123', newPlzCity: '01310-100 São Paulo',
@@ -241,48 +241,70 @@ const PAYMENT_URL = {
 
 // ─── PDF GENERATION ─────────────────────────────────────────────────────
 function generateAbmeldungPdf(session) {
-  return new Promise((resolve, reject) => {
-    const { data } = session;
-    const today = new Date().toLocaleDateString('de-DE');
-    const outputPath = path.join(BOT_DIR, 'pdfs', `Abmeldung_${data.orderId}.pdf`);
-    const payload = JSON.stringify({
-      Nachname: data.lastName, Vorname: data.firstName, Geburtsname: data.birthName || '',
-      Geschlecht: data.gender || '', Geburtsdatum: data.birthDate || '', Geburtsort: data.birthPlace || '',
-      Staatsangehoerigkeit: data.nationality || '', Strasse: data.fullAddress || '',
-      PLZ: data.plz || '', Bezirk: data.bezirk || '', Auszugsdatum: data.moveOutDate || '',
-      NeueStrasse: data.newStreet || '', NeuesLand: `${data.newPlzCity || ''} ${data.newCountry || ''}`.trim(),
-      BisherigWohnung: data.bisherigWohnungTyp || 'alleinige', NeueWohnungExistiert: data.neueWohnungExistiert || 'nein',
-      Datum: today, SignaturBase64: (data.sigMode === 'paste' && data.signatureImage) ? data.signatureImage : '',
-      FamilyMembers: data.familyMembers || [],
-    });
-    const PYTHON3 = process.env.PYTHON_PATH || 'python3';
-    const scriptPath = path.join(BOT_DIR, 'fill_abmeldung.py');
-    const pyEnv = getPyEnv();
-    console.log('🐍 Python exec:', PYTHON3, '| PYTHONPATH:', pyEnv.PYTHONPATH);
-    execFile(PYTHON3, [scriptPath, payload, outputPath], { env: pyEnv }, (err, stdout, stderr) => {
-      if (err) { console.error('❌ fill_abmeldung.py error:', stderr); return reject(new Error(stderr || err.message)); }
-      if (stdout.startsWith('OK:')) {
-        console.log('✅ PDF generated:', outputPath);
-        if (data.service === 'full') {
-          const vollmachtPath = outputPath.replace('.pdf', '_Vollmacht.pdf');
-          const vollmachtScript = path.join(BOT_DIR, 'gen_vollmacht.py');
-          if (fs.existsSync(vollmachtScript)) {
-            try {
-              const today2 = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-              const vollmachtData = JSON.stringify({
-                Vorname: data.firstName, Nachname: data.lastName, Bezirk: data.bezirk || 'Berlin', Datum: today2,
-                Geburtsdatum: data.birthDate || '', Adresse: data.fullAddress || '', AuszugDatum: data.moveOutDate || '',
-                Language: session.lang || 'de', SignaturBase64: (data.sigMode === 'paste' && data.signatureImage) ? data.signatureImage : '',
-              });
-              execFileSync(PYTHON3, [vollmachtScript, vollmachtData, vollmachtPath], { env: getPyEnv(), stdio: 'pipe' });
-              session._vollmachtPath = vollmachtPath;
-              console.log('✅ Vollmacht gerada:', vollmachtPath, '| lang:', session.lang);
-            } catch(ve) { console.error('⚠️ Vollmacht gen error (non-fatal):', ve.message); }
-          }
+  return new Promise(async (resolve, reject) => {
+    try {
+      const { data } = session;
+      const today = new Date().toLocaleDateString('de-DE');
+      const PYTHON3 = process.env.PYTHON_PATH || 'python3';
+      const scriptPath = path.join(BOT_DIR, 'fill_abmeldung.py');
+      const pyEnv = getPyEnv();
+      console.log('🐍 Python exec:', PYTHON3, '| PYTHONPATH:', pyEnv.PYTHONPATH);
+
+      const allFamily = data.familyMembers || [];
+      // Split into chunks of 2 (form has Person 1 + 2 family slots)
+      const familyChunks = [];
+      for (let i = 0; i < allFamily.length; i += 2) { familyChunks.push(allFamily.slice(i, i + 2)); }
+      if (familyChunks.length === 0) familyChunks.push([]); // at least one form
+
+      const generatedPaths = [];
+      for (let ci = 0; ci < familyChunks.length; ci++) {
+        const suffix = familyChunks.length > 1 ? `_Teil${ci + 1}` : '';
+        const outputPath = path.join(BOT_DIR, 'pdfs', `Abmeldung_${data.orderId}${suffix}.pdf`);
+        const payload = JSON.stringify({
+          Nachname: data.lastName, Vorname: data.firstName, Geburtsname: data.birthName || '',
+          Geschlecht: data.gender || '', Geburtsdatum: data.birthDate || '', Geburtsort: data.birthPlace || '', Geburtsland: data.birthCountry || '',
+          Staatsangehoerigkeit: data.nationality || '', Strasse: data.fullAddress || '',
+          PLZ: data.plz || '', Bezirk: data.bezirk || '', Auszugsdatum: data.moveOutDate || '',
+          NeueStrasse: data.newStreet || '', NeuesLand: `${data.newPlzCity || ''} ${data.newCountry || ''}`.trim(),
+          BisherigWohnung: data.bisherigWohnungTyp || 'alleinige', NeueWohnungExistiert: data.neueWohnungExistiert || 'nein',
+          Datum: today, SignaturBase64: (data.sigMode === 'paste' && data.signatureImage) ? data.signatureImage : '',
+          FamilyMembers: familyChunks[ci],
+        });
+        const result = await new Promise((res, rej) => {
+          execFile(PYTHON3, [scriptPath, payload, outputPath], { env: pyEnv }, (err, stdout, stderr) => {
+            if (err) { console.error('❌ fill_abmeldung.py error:', stderr); return rej(new Error(stderr || err.message)); }
+            if (stdout.startsWith('OK:')) { console.log('✅ PDF generated:', outputPath); res(outputPath); }
+            else { rej(new Error(stdout || 'Unknown error')); }
+          });
+        });
+        generatedPaths.push(result);
+      }
+
+      if (familyChunks.length > 1) {
+        console.log(`📄 Generated ${generatedPaths.length} Abmeldung forms for ${allFamily.length} family members`);
+        session._extraAbmeldungPaths = generatedPaths.slice(1); // extra forms beyond the first
+      }
+
+      // Vollmacht (Full Service)
+      if (data.service === 'full') {
+        const vollmachtPath = generatedPaths[0].replace('.pdf', '_Vollmacht.pdf').replace('_Teil1', '');
+        const vollmachtScript = path.join(BOT_DIR, 'gen_vollmacht.py');
+        if (fs.existsSync(vollmachtScript)) {
+          try {
+            const today2 = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const vollmachtData = JSON.stringify({
+              Vorname: data.firstName, Nachname: data.lastName, Bezirk: data.bezirk || 'Berlin', Datum: today2,
+              Geburtsdatum: data.birthDate || '', Adresse: data.fullAddress || '', AuszugDatum: data.moveOutDate || '',
+              Language: session.lang || 'de', SignaturBase64: (data.sigMode === 'paste' && data.signatureImage) ? data.signatureImage : '',
+            });
+            execFileSync(PYTHON3, [vollmachtScript, vollmachtData, vollmachtPath], { env: getPyEnv(), stdio: 'pipe' });
+            session._vollmachtPath = vollmachtPath;
+            console.log('✅ Vollmacht gerada:', vollmachtPath, '| lang:', session.lang);
+          } catch(ve) { console.error('⚠️ Vollmacht gen error (non-fatal):', ve.message); }
         }
-        resolve(outputPath);
-      } else { reject(new Error(stdout || 'Unknown error')); }
-    });
+      }
+      resolve(generatedPaths[0]);
+    } catch (e) { reject(e); }
   });
 }
 
@@ -332,6 +354,15 @@ async function triggerPowerAutomate(session) {
   try {
     const pdfPath = await generateAbmeldungPdf(session);
     await sendPdfToAdmin(pdfPath, session);
+    // Send extra Abmeldung forms (for families >3 people)
+    if (session._extraAbmeldungPaths && session._extraAbmeldungPaths.length > 0) {
+      for (let i = 0; i < session._extraAbmeldungPaths.length; i++) {
+        const extraPath = session._extraAbmeldungPaths[i];
+        if (fs.existsSync(extraPath)) {
+          try { await bot.telegram.sendDocument(ADMIN_CHAT_ID, { source: extraPath, filename: path.basename(extraPath) }, { caption: `📋 Abmeldung Anlage ${i + 2} — ${session.data.firstName} ${session.data.lastName}` }); } catch(e) { console.log('Extra form admin error:', e.message); }
+        }
+      }
+    }
     if (session._vollmachtPath && fs.existsSync(session._vollmachtPath)) {
       try { await bot.telegram.sendDocument(ADMIN_CHAT_ID, { source: session._vollmachtPath, filename: `Vollmacht_${session.data.orderId}.pdf` }, { caption: `📜 Vollmacht — ${session.data.firstName} ${session.data.lastName}` }); } catch(e) { console.log('Vollmacht admin error:', e.message); }
     }
@@ -404,18 +435,17 @@ async function askFamilyDocType(ctx, session) {
 async function finishFamilyMember(ctx, session) {
   const members = session.data.familyMembers || [];
   const lastMember = members[members.length - 1];
-  const canAdd = members.length < 2;
   const label = typeof lastMember === 'object' ? `${lastMember.raw} (${lastMember.gender}, ${lastMember.nationality})` : lastMember;
-  await ctx.reply(`✅ ${label}`, canAdd ? Markup.inlineKeyboard([[Markup.button.callback(t(session,'family_add_more'),'family_add_more')],[Markup.button.callback(t(session,'family_done'),'family_done')]]) : Markup.inlineKeyboard([[Markup.button.callback(t(session,'family_done'),'family_done')]]));
+  await ctx.reply(`✅ ${label}`, Markup.inlineKeyboard([[Markup.button.callback(t(session,'family_add_more'),'family_add_more')],[Markup.button.callback(t(session,'family_done'),'family_done')]]));
 }
 
 // ─── BUTTON HANDLERS ────────────────────────────────────────────────────
 bot.action('family_no', async (ctx) => { await ctx.answerCbQuery(); await askSigMode(ctx, getSession(ctx.chat.id)); });
 bot.action('family_yes', async (ctx) => { const s = getSession(ctx.chat.id); if (!s.data.familyMembers) s.data.familyMembers = []; s.step = 'family_name'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_family_name').replace('{n}', s.data.familyMembers.length + 1)); });
-bot.action('family_add_more', async (ctx) => { const s = getSession(ctx.chat.id); if (s.data.familyMembers && s.data.familyMembers.length >= 2) { await ctx.answerCbQuery(); await askSigMode(ctx, s); return; } s.step = 'family_name'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_family_name').replace('{n}', (s.data.familyMembers || []).length + 1)); });
+bot.action('family_add_more', async (ctx) => { const s = getSession(ctx.chat.id); s.step = 'family_name'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_family_name').replace('{n}', (s.data.familyMembers || []).length + 1)); });
 bot.action('family_done', async (ctx) => { await ctx.answerCbQuery(); await askSigMode(ctx, getSession(ctx.chat.id)); });
 bot.action(/fgender_([mfd])/, async (ctx) => { const s = getSession(ctx.chat.id); const map = { m: 'männlich', f: 'weiblich', d: 'divers' }; s.data._tempFamilyGender = map[ctx.match[1]]; s.step = 'family_nationality'; await ctx.answerCbQuery(); const memberNum = (s.data.familyMembers || []).length + 1; const natText = t(s, 'ask_family_nationality').replace('{n}', memberNum); const buttons = s.data.nationality ? Markup.inlineKeyboard([[Markup.button.callback(t(s, 'family_same_nationality') + ` (${s.data.nationality})`, 'fnat_same')]]) : undefined; await ctx.reply(natText, buttons); });
-bot.action('fnat_same', async (ctx) => { const s = getSession(ctx.chat.id); if (!s.data.familyMembers) s.data.familyMembers = []; const nat = s.data.nationality || ''; s.data.familyMembers.push({ raw: s.data._tempFamilyRaw, gender: s.data._tempFamilyGender || '', nationality: nat }); delete s.data._tempFamilyRaw; delete s.data._tempFamilyGender; await ctx.answerCbQuery(); await askFamilyDocType(ctx, s); });
+bot.action('fnat_same', async (ctx) => { const s = getSession(ctx.chat.id); if (!s.data.familyMembers) s.data.familyMembers = []; const nat = s.data.nationality || ''; s.data.familyMembers.push({ raw: s.data._tempFamilyRaw, gender: s.data._tempFamilyGender || '', nationality: nat, birthPlace: s.data._tempFamilyBirthPlace || '', birthCountry: s.data._tempFamilyBirthCountry || '' }); delete s.data._tempFamilyRaw; delete s.data._tempFamilyGender; delete s.data._tempFamilyBirthPlace; delete s.data._tempFamilyBirthCountry; await ctx.answerCbQuery(); await askFamilyDocType(ctx, s); });
 bot.action('fdoc_passport', async (ctx) => { const s = getSession(ctx.chat.id); const idx = (s.data.familyMembers || []).length; if (idx > 0 && typeof s.data.familyMembers[idx-1] === 'object') s.data.familyMembers[idx-1].docType = 'passport'; s.step = 'family_doc_front'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_family_doc_front').replace('{n}', idx)); });
 bot.action('fdoc_id', async (ctx) => { const s = getSession(ctx.chat.id); const idx = (s.data.familyMembers || []).length; if (idx > 0 && typeof s.data.familyMembers[idx-1] === 'object') s.data.familyMembers[idx-1].docType = 'id'; s.step = 'family_doc_front'; await ctx.answerCbQuery(); await ctx.reply(t(s, 'ask_family_doc_front').replace('{n}', idx)); });
 bot.action('sig_self', async (ctx) => { const s = getSession(ctx.chat.id); s.data.sigMode = 'self'; await ctx.answerCbQuery(); await showSummary(ctx, s); });
@@ -436,6 +466,7 @@ bot.action('summary_wrong', async (ctx) => {
   await ctx.reply(t(s, 'correct_which'), Markup.inlineKeyboard([
     [Markup.button.callback(t(s,'correct_firstname'),'corr_firstname'), Markup.button.callback(t(s,'correct_lastname'),'corr_lastname')],
     [Markup.button.callback(t(s,'correct_birthdate'),'corr_birthdate'), Markup.button.callback(t(s,'correct_birthplace'),'corr_birthplace')],
+    [Markup.button.callback(t(s,'correct_birthcountry'),'corr_birthcountry')],
     [Markup.button.callback(t(s,'correct_nationality'),'corr_nationality')],
     [Markup.button.callback(t(s,'correct_address'),'corr_address')],
     [Markup.button.callback(t(s,'correct_moveout'),'corr_moveout')],
@@ -443,7 +474,7 @@ bot.action('summary_wrong', async (ctx) => {
     [Markup.button.callback(t(s,'correct_email'),'corr_email'), Markup.button.callback(t(s,'correct_phone'),'corr_phone')],
   ]));
 });
-const CORR_FIELD_MAP = { firstname:{key:'firstName'}, lastname:{key:'lastName'}, birthdate:{key:'birthDate'}, birthplace:{key:'birthPlace'}, nationality:{key:'nationality'}, address:{key:'fullAddress'}, moveout:{key:'moveOutDate'}, newaddress:{key:'newFullAddress'}, email:{key:'email'}, phone:{key:'phone'} };
+const CORR_FIELD_MAP = { firstname:{key:'firstName'}, lastname:{key:'lastName'}, birthdate:{key:'birthDate'}, birthplace:{key:'birthPlace'}, birthcountry:{key:'birthCountry'}, nationality:{key:'nationality'}, address:{key:'fullAddress'}, moveout:{key:'moveOutDate'}, newaddress:{key:'newFullAddress'}, email:{key:'email'}, phone:{key:'phone'} };
 bot.action(/corr_(.+)/, async (ctx) => { const s = getSession(ctx.chat.id); const field = ctx.match[1]; if (!CORR_FIELD_MAP[field]) return ctx.answerCbQuery(); s.step = `corr_${field}`; await ctx.answerCbQuery(); await ctx.reply(t(s, 'correct_enter_new')); });
 bot.action('skip_anmeldung', async (ctx) => { await ctx.answerCbQuery(); await askFamily(ctx, getSession(ctx.chat.id)); });
 
@@ -539,7 +570,8 @@ bot.on('text', async (ctx) => {
     case 'firstname': session.data.firstName = text; session.step = 'lastname'; await ctx.reply(t(session, 'ask_lastname'), { parse_mode: 'Markdown' }); break;
     case 'lastname': session.data.lastName = text; session.step = 'birthdate'; await ctx.reply(t(session, 'ask_birthdate')); break;
     case 'birthdate': if (!isValidDate(text)) { await ctx.reply(t(session, 'invalid_date')); return; } session.data.birthDate = text; session.step = 'birthplace'; await ctx.reply(t(session, 'ask_birthplace')); break;
-    case 'birthplace': session.data.birthPlace = text; session.step = 'gender'; await ctx.reply(t(session, 'ask_gender'), Markup.inlineKeyboard([[Markup.button.callback('♂ männlich / masculino / male','gender_m')],[Markup.button.callback('♀ weiblich / feminino / female','gender_f')],[Markup.button.callback('⚧ divers / outro / other','gender_d')]])); break;
+    case 'birthplace': session.data.birthPlace = text; session.step = 'birthcountry'; await ctx.reply(t(session, 'ask_birthcountry')); break;
+    case 'birthcountry': session.data.birthCountry = text; session.step = 'gender'; await ctx.reply(t(session, 'ask_gender'), Markup.inlineKeyboard([[Markup.button.callback('♂ männlich / masculino / male','gender_m')],[Markup.button.callback('♀ weiblich / feminino / female','gender_f')],[Markup.button.callback('⚧ divers / outro / other','gender_d')]])); break;
     case 'gender': session.data.gender = text; session.step = 'nationality'; await ctx.reply(t(session, 'ask_nationality')); break;
     case 'nationality': session.data.nationality = normalizeNationality(text); session.step = 'address'; await ctx.reply(t(session, 'ask_address')); break;
     case 'address': { const plz = extractPLZ(text); if (!plz || !PLZ_MAP[plz]) { await ctx.reply(t(session, 'invalid_plz')); return; } session.data.fullAddress = text; session.data.plz = plz; session.data.bezirk = getBezirk(plz); session.step = 'moveout'; await ctx.reply(t(session, 'ask_moveout')); break; }
@@ -549,9 +581,11 @@ bot.on('text', async (ctx) => {
     case 'newaddress_country': session.data.newCountry = text; session.data.newFullAddress = `${session.data.newStreet}, ${session.data.newPlzCity}, ${session.data.newCountry}`; session.step = 'wohnungtyp'; await ctx.reply(t(session, 'ask_wohnungtyp'), Markup.inlineKeyboard([[Markup.button.callback(t(session,'wohnungtyp_alleinige'),'wtyp_alleinige')],[Markup.button.callback(t(session,'wohnungtyp_haupt'),'wtyp_haupt')],[Markup.button.callback(t(session,'wohnungtyp_neben'),'wtyp_neben')]])); break;
     case 'email': if (!isValidEmail(text)) { await ctx.reply(t(session, 'invalid_email')); return; } session.data.email = text; session.step = 'phone'; await ctx.reply(t(session, 'ask_phone')); break;
     case 'phone': session.data.phone = text; session.step = 'id_front'; await ctx.reply(t(session, 'ask_id_front')); break;
-    case 'family_name': if (!session.data.familyMembers) session.data.familyMembers = []; session.data._tempFamilyRaw = text; session.step = 'family_gender'; { const memberNum = session.data.familyMembers.length + 1; await ctx.reply(t(session, 'ask_family_gender').replace('{n}', memberNum), Markup.inlineKeyboard([[Markup.button.callback('♂ männlich / masculino / male','fgender_m')],[Markup.button.callback('♀ weiblich / feminino / female','fgender_f')],[Markup.button.callback('⚧ divers / outro / other','fgender_d')]])); } break;
+    case 'family_name': if (!session.data.familyMembers) session.data.familyMembers = []; session.data._tempFamilyRaw = text; session.step = 'family_birthplace'; { const memberNum = session.data.familyMembers.length + 1; await ctx.reply(t(session, 'ask_family_birthplace').replace('{n}', memberNum)); } break;
+    case 'family_birthplace': session.data._tempFamilyBirthPlace = text; session.step = 'family_birthcountry'; { const memberNum = (session.data.familyMembers || []).length + 1; await ctx.reply(t(session, 'ask_family_birthcountry').replace('{n}', memberNum)); } break;
+    case 'family_birthcountry': session.data._tempFamilyBirthCountry = text; session.step = 'family_gender'; { const memberNum = (session.data.familyMembers || []).length + 1; await ctx.reply(t(session, 'ask_family_gender').replace('{n}', memberNum), Markup.inlineKeyboard([[Markup.button.callback('♂ männlich / masculino / male','fgender_m')],[Markup.button.callback('♀ weiblich / feminino / female','fgender_f')],[Markup.button.callback('⚧ divers / outro / other','fgender_d')]])); } break;
     case 'family_gender': session.data._tempFamilyGender = text; session.step = 'family_nationality'; { const memberNum = session.data.familyMembers.length + 1; const natText = t(session, 'ask_family_nationality').replace('{n}', memberNum); const buttons = session.data.nationality ? Markup.inlineKeyboard([[Markup.button.callback(t(session, 'family_same_nationality') + ` (${session.data.nationality})`, 'fnat_same')]]) : undefined; await ctx.reply(natText, buttons); } break;
-    case 'family_nationality': { if (!session.data.familyMembers) session.data.familyMembers = []; const natVal = normalizeNationality(text); session.data.familyMembers.push({ raw: session.data._tempFamilyRaw, gender: session.data._tempFamilyGender || '', nationality: natVal }); delete session.data._tempFamilyRaw; delete session.data._tempFamilyGender; await askFamilyDocType(ctx, session); } break;
+    case 'family_nationality': { if (!session.data.familyMembers) session.data.familyMembers = []; const natVal = normalizeNationality(text); session.data.familyMembers.push({ raw: session.data._tempFamilyRaw, gender: session.data._tempFamilyGender || '', nationality: natVal, birthPlace: session.data._tempFamilyBirthPlace || '', birthCountry: session.data._tempFamilyBirthCountry || '' }); delete session.data._tempFamilyRaw; delete session.data._tempFamilyGender; delete session.data._tempFamilyBirthPlace; delete session.data._tempFamilyBirthCountry; await askFamilyDocType(ctx, session); } break;
   }
 });
 
@@ -615,10 +649,10 @@ async function showSummary(ctx, session) {
   const serviceLabel = data.service === 'full' ? 'Full Service (€39.99)' : 'DIY (€4.99)';
   const newAddr = data.newFullAddress || [data.newStreet, data.newPlzCity, data.newCountry].filter(Boolean).join(', ');
   let familySummary = '';
-  if (data.familyMembers && data.familyMembers.length > 0) { familySummary = '👨‍👩‍👧 Familienmitglieder:\n' + data.familyMembers.map((m, i) => { if (typeof m === 'object') return `  ${i+2}. ${m.raw} (${m.gender || '?'}, ${m.nationality || '?'})`; return `  ${i+2}. ${m}`; }).join('\n') + '\n\n'; }
+  if (data.familyMembers && data.familyMembers.length > 0) { familySummary = '👨‍👩‍👧 Familienmitglieder:\n' + data.familyMembers.map((m, i) => { if (typeof m === 'object') { const bp = [m.birthPlace, m.birthCountry].filter(Boolean).join(', '); return `  ${i+2}. ${m.raw}${bp ? ' (🏙 ' + bp + ')' : ''} (${m.gender || '?'}, ${m.nationality || '?'})`; } return `  ${i+2}. ${m}`; }).join('\n') + '\n\n'; }
   const summary = t(session, 'summary')
     .replace('{firstName}', data.firstName || '–').replace('{lastName}', data.lastName || '–')
-    .replace('{birthDate}', data.birthDate || '–').replace('{birthPlace}', data.birthPlace || '–')
+    .replace('{birthDate}', data.birthDate || '–').replace('{birthPlace}', data.birthPlace || '–').replace('{birthCountry}', data.birthCountry || '–')
     .replace('{nationality}', data.nationality || '–').replace('{address}', data.fullAddress || '–')
     .replace('{bezirk}', data.bezirk || '–').replace('{moveOutDate}', data.moveOutDate || '–')
     .replace('{newAddress}', newAddr || '–').replace('{email}', data.email || '–')

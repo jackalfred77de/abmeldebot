@@ -87,7 +87,7 @@ def fill_pdf(data: dict, output_path: str):
     writer.append(reader)
 
     plz_bezirk  = (data.get("PLZ","") + " " + data.get("Bezirk","")).strip()
-    geburtsinfo = " ".join(filter(None,[data.get("Geburtsdatum",""), data.get("Geburtsort","")]))
+    geburtsinfo = " ".join(filter(None,[data.get("Geburtsdatum",""), data.get("Geburtsort",""), data.get("Geburtsland","")]))
     neue_strasse = data.get("NeueStrasse", data.get("NeueAdresse",""))
     neue_plz_ort = data.get("NeuePLZOrt","")
     neues_land   = data.get("NeuesLand","")
@@ -168,15 +168,21 @@ def fill_pdf(data: dict, output_path: str):
             raw = member.get('raw', '')
             gender = normalize(member.get('gender', ''), GENDER_MAP)
             nat = normalize(member.get('nationality', ''), NATIONALITY_MAP)
+            member_birthplace = member.get('birthPlace', '')
+            member_birthcountry = member.get('birthCountry', '')
         else:
             raw = str(member)
             gender = ''
             nat = ''
+            member_birthplace = ''
+            member_birthcountry = ''
         if not raw.strip():
             continue
         parts = raw.split(',')
         name_raw = parts[0].strip()       # ex: "Maria Silva"
         dob_raw  = parts[1].strip() if len(parts) > 1 else ''
+        # Build "Tag Ort Land der Geburt" for family member
+        member_geburtsinfo = " ".join(filter(None, [dob_raw, member_birthplace, member_birthcountry]))
         # Separar nome e sobrenome: última palavra = sobrenome
         name_parts = name_raw.rsplit(' ', 1)
         fn = name_parts[0].strip() if len(name_parts) > 1 else name_raw  # Vornamen
@@ -186,7 +192,7 @@ def fill_pdf(data: dict, output_path: str):
                 "Person 2 Familienmitglied ist Familienname ggf Doktorgrad": ln,
                 "Person 2 Familienmitglied ist Vornamen Rufnamen unterstreichen": fn,
                 "Person 2 Familienmitglied istGeschlecht": gender,
-                "Person 2 Familienmitglied ist Tag Ort Land der Geburt": dob_raw,
+                "Person 2 Familienmitglied ist Tag Ort Land der Geburt": member_geburtsinfo,
                 "Person 2 Familienmitglied ist Staatsangehörigkeiten": nat,
             }
         else:
@@ -194,7 +200,7 @@ def fill_pdf(data: dict, output_path: str):
                 "Person 3 Familienmitglied ist Familienname ggf Doktorgrad": ln,
                 "Person 3 Familienmitglied ist Vornamen Rufnamen unterstreichen": fn,
                 "Person 3 Familienmitglied ist Geschlecht": gender,
-                "Person 3 Familienmitglied ist Tag Ort Land der Geburt": dob_raw,
+                "Person 3 Familienmitglied ist Tag Ort Land der Geburt": member_geburtsinfo,
                 "Person 3 Familienmitglied istStaatsangehörigkeiten": nat,
             }
         text_fields.update(fam_fields)

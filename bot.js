@@ -107,7 +107,9 @@ async function downloadPhoto(ctx, fileId) {
 async function notifyAdmin(session) {
   if (!ADMIN_CHAT_ID) return;
   const { data } = session;
-  const message = `🔔 **Neue Abmeldung!**\n\n👤 ${data.firstName} ${data.lastName}\n📧 ${data.email}\n📱 ${data.phone || '–'}\n💼 ${data.service === 'full' ? 'Full Service (€39.99)' : 'DIY (€4.99)'}\n📆 Auszug: ${data.moveOutDate}\n📍 ${data.fullAddress}\n🏛 Bürgeramt: ${data.bezirk}\n\nBestellung: ${data.orderId}`;
+  const deliveryInfo = data.deliveryMethod === 'post' ? `📮 Post (+€15,00)${data.postalAddress ? ' → ' + data.postalAddress : ''}` : '📧 E-Mail';
+  const totalPrice = data.totalPrice ? `€${data.totalPrice.toFixed(2)}` : (data.service === 'full' ? '€39.99' : '€4.99');
+  const message = `🔔 **Neue Abmeldung!**\n\n👤 ${data.firstName} ${data.lastName}\n📧 ${data.email}\n📱 ${data.phone || '–'}\n💼 ${data.service === 'full' ? 'Full Service' : 'DIY'}\n📬 Zustellung: ${deliveryInfo}\n💰 Gesamt: ${totalPrice}\n📆 Auszug: ${data.moveOutDate}\n📍 ${data.fullAddress}\n🏛 Bürgeramt: ${data.bezirk}\n\nBestellung: ${data.orderId}`;
   try {
     await bot.telegram.sendMessage(ADMIN_CHAT_ID, message, { parse_mode: 'Markdown' });
     // Action buttons for admin
@@ -532,6 +534,43 @@ const CORR_FIELD_MAP = { firstname:{key:'firstName'}, lastname:{key:'lastName'},
 bot.action(/corr_(.+)/, async (ctx) => { const s = getSession(ctx.chat.id); const field = ctx.match[1]; if (!CORR_FIELD_MAP[field]) return ctx.answerCbQuery(); s.step = `corr_${field}`; await ctx.answerCbQuery(); await ctx.reply(t(s, 'correct_enter_new')); });
 bot.action('skip_anmeldung', async (ctx) => { await ctx.answerCbQuery(); await askFamily(ctx, getSession(ctx.chat.id)); });
 
+// ─── DELIVERY METHOD HANDLERS ─────────────────────────────────────────
+bot.action('delivery_email', async (ctx) => {
+  const s = getSession(ctx.chat.id);
+  s.data.deliveryMethod = 'email';
+  s.data.postalAddress = '';
+  s.data.postalFee = 0;
+  s.step = 'id_front';
+  await ctx.answerCbQuery();
+  await ctx.reply(t(s, 'ask_id_front'));
+});
+bot.action('delivery_post', async (ctx) => {
+  const s = getSession(ctx.chat.id);
+  s.data.deliveryMethod = 'post';
+  await ctx.answerCbQuery();
+  const newAddr = s.data.newFullAddress || [s.data.newStreet, s.data.newPlzCity, s.data.newCountry].filter(Boolean).join(', ');
+  const buttons = [];
+  if (newAddr) buttons.push([Markup.button.callback(t(s, 'use_new_address_btn') + ` (${newAddr.substring(0, 40)}${newAddr.length > 40 ? '…' : ''})`, 'delivery_use_new')]);
+  buttons.push([Markup.button.callback(t(s, 'other_address_btn'), 'delivery_other')]);
+  await ctx.reply(t(s, 'ask_postal_address'), Markup.inlineKeyboard(buttons));
+});
+bot.action('delivery_use_new', async (ctx) => {
+  const s = getSession(ctx.chat.id);
+  const newAddr = s.data.newFullAddress || [s.data.newStreet, s.data.newPlzCity, s.data.newCountry].filter(Boolean).join(', ');
+  s.data.postalAddress = newAddr;
+  s.data.postalFee = 15.00;
+  await ctx.answerCbQuery();
+  await ctx.reply(t(s, 'delivery_post_confirmation').replace('{address}', newAddr));
+  s.step = 'id_front';
+  await ctx.reply(t(s, 'ask_id_front'));
+});
+bot.action('delivery_other', async (ctx) => {
+  const s = getSession(ctx.chat.id);
+  s.step = 'postal_address';
+  await ctx.answerCbQuery();
+  await ctx.reply(t(s, 'ask_postal_address'));
+});
+
 // ─── ADMIN ACTION HANDLERS ─────────────────────────────────────────────
 bot.action(/admin_approve_(.+)/, async (ctx) => {
   if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) return ctx.answerCbQuery('❌ Nicht autorisiert');
@@ -634,7 +673,8 @@ bot.on('text', async (ctx) => {
     case 'newaddress_plzcity': session.data.newPlzCity = text; session.step = 'newaddress_country'; await ctx.reply(t(session, 'ask_newaddress_country')); break;
     case 'newaddress_country': session.data.newCountry = text; session.data.newFullAddress = `${session.data.newStreet}, ${session.data.newPlzCity}, ${session.data.newCountry}`; session.step = 'wohnungtyp'; await ctx.reply(t(session, 'ask_wohnungtyp'), Markup.inlineKeyboard([[Markup.button.callback(t(session,'wohnungtyp_alleinige'),'wtyp_alleinige')],[Markup.button.callback(t(session,'wohnungtyp_haupt'),'wtyp_haupt')],[Markup.button.callback(t(session,'wohnungtyp_neben'),'wtyp_neben')]])); break;
     case 'email': if (!isValidEmail(text)) { await ctx.reply(t(session, 'invalid_email')); return; } session.data.email = text; session.step = 'phone'; await ctx.reply(t(session, 'ask_phone')); break;
-    case 'phone': session.data.phone = text; session.step = 'id_front'; await ctx.reply(t(session, 'ask_id_front')); break;
+    case 'phone': session.data.phone = text; session.step = 'delivery_method'; await ctx.reply(t(session, 'ask_delivery_method'), { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback(t(session, 'delivery_email_btn'), 'delivery_email')],[Markup.button.callback(t(session, 'delivery_post_btn'), 'delivery_post')]]) }); break;
+    case 'postal_address': session.data.postalAddress = text; session.data.postalFee = 15.00; await ctx.reply(t(session, 'delivery_post_confirmation').replace('{address}', text)); session.step = 'id_front'; await ctx.reply(t(session, 'ask_id_front')); break;
     case 'family_name': if (!session.data.familyMembers) session.data.familyMembers = []; session.data._tempFamilyRaw = text; session.step = 'family_birthplace'; { const memberNum = session.data.familyMembers.length + 1; await ctx.reply(t(session, 'ask_family_birthplace').replace('{n}', memberNum)); } break;
     case 'family_birthplace': session.data._tempFamilyBirthPlace = text; session.step = 'family_birthcountry'; { const memberNum = (session.data.familyMembers || []).length + 1; await ctx.reply(t(session, 'ask_family_birthcountry').replace('{n}', memberNum)); } break;
     case 'family_birthcountry': session.data._tempFamilyBirthCountry = text; session.step = 'family_gender'; { const memberNum = (session.data.familyMembers || []).length + 1; await ctx.reply(t(session, 'ask_family_gender').replace('{n}', memberNum), Markup.inlineKeyboard([[Markup.button.callback('♂ männlich / masculino / male','fgender_m')],[Markup.button.callback('♀ weiblich / feminino / female','fgender_f')],[Markup.button.callback('⚧ divers / outro / other','fgender_d')]])); } break;
@@ -706,6 +746,15 @@ async function showSummary(ctx, session) {
   const newAddr = data.newFullAddress || [data.newStreet, data.newPlzCity, data.newCountry].filter(Boolean).join(', ');
   let familySummary = '';
   if (data.familyMembers && data.familyMembers.length > 0) { familySummary = '👨‍👩‍👧 Familienmitglieder:\n' + data.familyMembers.map((m, i) => { if (typeof m === 'object') { const bp = [m.birthPlace, m.birthCountry].filter(Boolean).join(', '); return `  ${i+2}. ${m.raw}${bp ? ' (🏙 ' + bp + ')' : ''} (${m.gender || '?'}, ${m.nationality || '?'})`; } return `  ${i+2}. ${m}`; }).join('\n') + '\n\n'; }
+  // Calculate total price
+  const basePrice = data.service === 'full' ? 39.99 : 4.99;
+  const postalFee = data.postalFee || 0;
+  data.totalPrice = basePrice + postalFee;
+  // Delivery line
+  const deliveryLine = data.deliveryMethod === 'post'
+    ? t(session, 'delivery_post_label') + (data.postalAddress ? `\n📮 ${data.postalAddress}` : '')
+    : t(session, 'delivery_email_label');
+  const totalLine = t(session, 'total_price_label').replace('{total}', data.totalPrice.toFixed(2));
   const summary = t(session, 'summary')
     .replace('{firstName}', data.firstName || '–').replace('{lastName}', data.lastName || '–')
     .replace('{birthDate}', data.birthDate || '–').replace('{birthPlace}', data.birthPlace || '–').replace('{birthCountry}', data.birthCountry || '–')
@@ -714,7 +763,8 @@ async function showSummary(ctx, session) {
     .replace('{newAddress}', newAddr || '–').replace('{email}', data.email || '–')
     .replace('{phone}', data.phone || '–').replace('{familySummary}', familySummary)
     .replace('{service}', serviceLabel);
-  await ctx.reply(summary, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
+  const fullSummary = summary + `\n\n${deliveryLine}\n${totalLine}`;
+  await ctx.reply(fullSummary, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
     [Markup.button.callback(t(session, 'summary_correct'), 'summary_correct')],
     [Markup.button.callback(t(session, 'summary_wrong'), 'summary_wrong')],
   ]) });

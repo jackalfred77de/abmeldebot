@@ -920,6 +920,9 @@ function renderSidebar(c) {
       <div class="detail-row"><span class="label">Berliner Adresse</span><span class="val">${esc(c.BerlinAddress || '–')}</span></div>
       <div class="detail-row"><span class="label">Auszugsdatum</span><span class="val">${esc(c.MoveOutDate || '–')}</span></div>
       <div class="detail-row"><span class="label">Neue Adresse</span><span class="val">${esc(c.NewAddress || '–')}</span></div>
+      <div class="detail-row"><span class="label">Zustellung</span><span class="val">${c.DeliveryMethod === 'post' ? '📮 Post (€15,00)' : '📧 E-Mail'}</span></div>
+      ${c.DeliveryMethod === 'post' && c.PostalAddress ? `<div class="detail-row"><span class="label">Postadresse</span><span class="val">${esc(c.PostalAddress)}</span></div>` : ''}
+      <div class="detail-row"><span class="label">Gesamtpreis</span><span class="val" style="font-weight:600">€${(c.TotalPrice || 0).toFixed ? (c.TotalPrice || 0).toFixed(2) : (c.TotalPrice || '0.00')}</span></div>
       <div class="detail-row"><span class="label">Erstellt</span><span class="val">${formatDate(c.CreatedAt)}</span></div>
       <div class="detail-row"><span class="label">Aktualisiert</span><span class="val">${formatDate(c.LastUpdated)}</span></div>
     </div>

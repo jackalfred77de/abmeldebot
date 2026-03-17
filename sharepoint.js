@@ -171,6 +171,11 @@ async function createLedgerEntry(session, fileUrls = {}) {
       IdFrontUrl:   fileUrls.idFront   || '',
       IdBackUrl:    fileUrls.idBack    || '',
       AnmeldungUrl: fileUrls.anmeldung || '',
+      DeliveryMethod: data.deliveryMethod || 'email',
+      PostalAddress:  data.postalAddress  || '',
+      PostalFee:      data.postalFee      || 0,
+      TotalPrice:     data.totalPrice     || 0,
+      AbmeldebestaetigungUrl: '',
       Notes:        '',
       // Timeline como JSON string (SharePoint não suporta arrays nativamente)
       Timeline: JSON.stringify([

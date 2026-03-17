@@ -142,7 +142,7 @@ async function sendToBuergeramt(caseData, opts = {}) {
   const bezirk = caseData.Bezirk || '';
   const amtEmail = getBezirkEmail(bezirk);
   if (!amtEmail) {
-    return { success: false, error: 'Kein Bürgeramt-Email für Bezirk "' + bezirk + '" gefunden' };
+    return { success: false, error: 'Kein B\u00fcrgeramt-Email f\u00fcr Bezirk "' + bezirk + '" gefunden' };
   }
   const orderId    = caseData.Title || '';
   const clientName = caseData.ClientName || '';
@@ -153,56 +153,85 @@ async function sendToBuergeramt(caseData, opts = {}) {
   const address    = caseData.BerlinAddress || '';
   const moveOut    = caseData.MoveOutDate || '';
 
-  const isFemale     = gender === 'weiblich';
-  const isDivers     = gender === 'divers';
-  const mandant      = isDivers ? 'Mandant*in' : (isFemale ? 'Mandantin' : 'Mandant');
-  const meines       = isDivers ? 'meines/meiner' : (isFemale ? 'meiner' : 'meines');
-  const meinen       = isDivers ? 'meinen/meine' : (isFemale ? 'meine' : 'meinen');
-  const bevollmArt   = isDivers ? 'bevollmächtigte/r' : (isFemale ? 'bevollmächtigte' : 'bevollmächtigter');
-  const herrnFrau    = isDivers ? 'Herrn/Frau' : (isFemale ? 'Frau' : 'Herrn');
+  // Gender-aware: Mandant / Mandantin (no "Mandantins"!)
+  const isFemale   = gender === 'weiblich';
+  const isDivers   = gender === 'divers';
+  const mandant    = isDivers ? 'Mandant*in' : (isFemale ? 'Mandantin' : 'Mandant');
+  const mandanten  = isDivers ? 'Mandant*in' : (isFemale ? 'Mandantin' : 'Mandanten');
+  const meiner     = isDivers ? 'meines/meiner' : (isFemale ? 'meiner' : 'meines');
+  const herrnFrau  = isDivers ? 'Herrn/Frau' : (isFemale ? 'Frau' : 'Herrn');
+  const bevollm    = isDivers ? 'bevollm\u00e4chtigte/r' : (isFemale ? 'bevollm\u00e4chtigte' : 'bevollm\u00e4chtigter');
+
   const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const subject = 'Abmeldung \u2014 ' + lastName + ', ' + firstName + ' \u2014 Vollmacht RA Reichel';
 
-  const subject = 'Abmeldung — ' + lastName + ', ' + firstName + ' — Vollmacht RA Reichel';
+  // Family members from SharePoint (JSON string)
+  let familyNames = [];
+  try {
+    const fm = JSON.parse(caseData.FamilyMembers || '[]');
+    familyNames = fm.map(function(m) { return (typeof m === 'object' && m.raw) ? m.raw : String(m); });
+  } catch(_) {}
 
-  const htmlBody = '<div style="font-family:Times New Roman,serif;font-size:12pt;color:#000;max-width:680px;">' +
-    '<p style="text-align:right;margin-bottom:24px;">Berlin, den ' + today + '</p>' +
-    '<p><strong>Kanzlei Reichel — RAFER</strong><br/>Rechtsanwalt Frederico E. Reichel<br/>Katzbachstraße 18<br/>10965 Berlin</p>' +
-    '<p>Bezirksamt ' + bezirk + ' von Berlin<br/>Abt. Bürgeramt<br/>— per E-Mail —</p>' +
-    '<p><strong>Betreff: Abmeldung einer Wohnung gem. § 17 Abs. 2 BMG</strong><br/>' +
+  // Build family section if applicable
+  let familyHtml = '';
+  if (familyNames.length > 0) {
+    familyHtml = '<p>Die Abmeldung umfasst neben ' + herrnFrau + ' ' + firstName + ' ' + lastName + ' folgende Familienangeh\u00f6rige:</p>' +
+      '<ul style="margin:4px 0 16px 20px;">' +
+      familyNames.map(function(n) { return '<li>' + n + '</li>'; }).join('') +
+      '</ul>';
+  }
+
+  const htmlBody = '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
+    'Rechtsanwalt Frederico E. Reichel \u2014 RAFER<br/>' +
+    'Katzbachstra\u00dfe 18<br/>10965 Berlin</p>' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
+    'Bezirksamt ' + bezirk + ' von Berlin<br/>' +
+    'Abt. B\u00fcrgeramt<br/>' +
+    '\u2014 per E-Mail \u2014</p>' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
+    '<strong>Betreff: Abmeldung einer Wohnung gem. \u00a7 17 Abs. 2 BMG</strong><br/>' +
     '<strong>' + mandant + ': ' + herrnFrau + ' ' + firstName + ' ' + lastName + '</strong><br/>' +
     '<strong>Az.: ' + orderId + '</strong></p>' +
-    '<p>Sehr geehrte Damen und Herren,</p>' +
-    '<p>als ' + bevollmArt + ' Rechtsanwalt ' + meines + ' ' + mandant + 's, ' + herrnFrau + ' ' + firstName + ' ' + lastName + ', ' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">Sehr geehrte Damen und Herren,</p>' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
+    'als ' + bevollm + ' Rechtsanwalt ' + meiner + ' ' + mandanten + ', ' + herrnFrau + ' ' + firstName + ' ' + lastName + ', ' +
     'zeige ich hiermit die Abmeldung der folgenden Wohnung in Berlin an:</p>' +
-    '<table cellpadding="4" cellspacing="0" border="0" style="margin:16px 0;font-size:12pt;">' +
+    '<table cellpadding="4" cellspacing="0" border="0" style="margin:8px 0 16px 0;font-family:Helvetica,Arial,sans-serif;font-size:11.5px;">' +
     '<tr><td style="padding-right:16px;"><strong>Adresse:</strong></td><td>' + address + '</td></tr>' +
     '<tr><td style="padding-right:16px;"><strong>Auszugsdatum:</strong></td><td>' + moveOut + '</td></tr></table>' +
-    '<p>Die beigefügte Vollmacht berechtigt mich, im Namen ' + meines + ' ' + mandant + 's die Abmeldung ' +
-    'zu erklären, erforderliche Unterlagen einzureichen sowie Bestätigungen und sonstige ' +
-    'Schreiben im Zusammenhang mit der Abmeldung entgegenzunehmen.</p>' +
-    '<p>Als Anlagen überreiche ich:</p>' +
-    '<ol style="margin:8px 0 16px 20px;"><li>Ausgefülltes Abmeldeformular</li><li>Vollmacht</li>' +
-    '<li>Kopie des Ausweisdokuments ' + meines + ' ' + mandant + 's</li></ol>' +
-    '<p>Ich bitte um Bearbeitung und Übersendung der Abmeldebestätigung an ' + meinen + ' ' + mandant + 'en ' +
-    'oder an meine Kanzlei unter der oben genannten Adresse.</p>' +
-    '<p>Mit freundlichen Grüßen</p>' +
-    '<p style="margin-top:32px;"><strong>Frederico E. Reichel</strong><br/>Rechtsanwalt</p>' +
-    '<table cellpadding="0" cellspacing="0" border="0" style="border-top:2px solid #000;padding-top:12px;margin-top:32px;font-family:Helvetica,Arial,sans-serif;">' +
-    '<tr><td style="font-size:11px;color:#333;line-height:1.7;">' +
-    'Kanzlei Reichel — RAFER<br/>Katzbachstraße 18 · 10965 Berlin<br/>' +
-    'T +49 30 44312792 · Fx +49 30 75439509<br/>' +
-    'E <a href="mailto:abmeldung@rafer.de" style="color:#000;">abmeldung@rafer.de</a> · ' +
-    'W <a href="https://rafer.de" style="color:#000;">rafer.de</a></td></tr>' +
-    '<tr><td style="border-top:1px solid #e0e0e0;padding-top:8px;font-size:8.5pt;color:#888;line-height:1.5;">' +
-    'Diese E-Mail und etwaige Anhänge können vertrauliche und/oder rechtlich geschützte Informationen enthalten. ' +
-    'Falls Sie nicht der angegebene Empfänger sind, benachrichtigen Sie uns bitte sofort und löschen Sie diese E-Mail.</td></tr></table></div>';
+    familyHtml +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">Als Anlagen \u00fcberreiche ich:</p>' +
+    '<ol style="margin:4px 0 16px 20px;font-family:Helvetica,Arial,sans-serif;font-size:11.5px;">' +
+    '<li>Ausgef\u00fclltes Abmeldeformular</li>' +
+    '<li>Vollmacht</li>' +
+    '<li>Kopie des Ausweisdokuments ' + meiner + ' ' + mandanten + '</li></ol>' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
+    'Ich bitte um Bearbeitung und \u00dcbersendung der Abmeldebest\u00e4tigung an meine Kanzlei unter der oben genannten Adresse, per E-Mail oder per Fax an: 030 75439509</p>' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">Mit freundlichen Gr\u00fc\u00dfen</p>' +
+    '<table cellpadding="0" cellspacing="0" border="0" style="border-top:2px solid #000;padding-top:16px;margin-top:24px;font-family:Helvetica,Arial,sans-serif;">' +
+    '<tr><td style="padding-bottom:12px;">' +
+    '<strong style="font-size:15px;letter-spacing:0.04em;text-transform:uppercase;">FREDERICO E. REICHEL</strong><br/>' +
+    '<span style="font-size:12px;letter-spacing:0.06em;text-transform:uppercase;">Rechtsanwalt</span>' +
+    '</td></tr>' +
+    '<tr><td style="border-top:1px solid #ccc;padding-top:10px;font-size:11.5px;color:#222;line-height:1.7;">' +
+    'Katzbachstra\u00dfe 18 &middot; 10965 Berlin<br/>' +
+    '<span style="display:inline-block;width:28px;color:#555;font-size:10.5px;">T</span> +49 30 44312792<br/>' +
+    '<span style="display:inline-block;width:28px;color:#555;font-size:10.5px;">Fx</span> +49 30 75439509<br/>' +
+    '<span style="display:inline-block;width:28px;color:#555;font-size:10.5px;">E</span> <a href="mailto:abmeldung@rafer.de" style="color:#000;text-decoration:none;">abmeldung@rafer.de</a><br/>' +
+    '<span style="display:inline-block;width:28px;color:#555;font-size:10.5px;">W</span> <a href="https://rafer.de" style="color:#000;text-decoration:none;">rafer.de</a><br/>' +
+    '\ud83d\udcf1 WhatsApp + Telegram: +49 155 60245902' +
+    '</td></tr>' +
+    '<tr><td style="border-top:1px solid #e0e0e0;padding-top:10px;margin-top:16px;font-size:9px;color:#888;line-height:1.55;">' +
+    'Diese E-Mail und etwaige Anh\u00e4nge k\u00f6nnen vertrauliche und/oder rechtlich gesch\u00fctzte Informationen enthalten. ' +
+    'Falls Sie nicht der angegebene Empf\u00e4nger sind, benachrichtigen Sie uns bitte sofort und l\u00f6schen Sie diese E-Mail.' +
+    '</td></tr></table>';
 
   if (dryRun) {
     return { success: true, dryRun: true, to: amtEmail, subject, htmlBody, bezirk };
   }
 
   if (!GRAPH_TENANT_ID || !GRAPH_CLIENT_ID || !GRAPH_CLIENT_SECRET) {
-    console.log('Graph API nicht konfiguriert — simuliere Bürgeramt-Email');
+    console.log('Graph API nicht konfiguriert \u2014 simuliere B\u00fcrgeramt-Email');
     return { success: true, simulated: true, to: amtEmail, subject, htmlBody, bezirk };
   }
 
@@ -221,7 +250,7 @@ async function sendToBuergeramt(caseData, opts = {}) {
       );
       return Buffer.from(resp.data).toString('base64');
     } catch (e) {
-      console.error('⚠️ SP download error (' + fallbackName + '):', e.message);
+      console.error('\u26a0\ufe0f SP download error (' + fallbackName + '):', e.message);
       return null;
     }
   }
@@ -244,7 +273,7 @@ async function sendToBuergeramt(caseData, opts = {}) {
   }
 
   if (attachments.length === 0) {
-    return { success: false, error: 'Keine Anhänge gefunden — Abmeldung/Vollmacht/ID fehlen in SharePoint' };
+    return { success: false, error: 'Keine Anh\u00e4nge gefunden \u2014 Abmeldung/Vollmacht/ID fehlen in SharePoint' };
   }
 
   try {
@@ -264,10 +293,10 @@ async function sendToBuergeramt(caseData, opts = {}) {
       },
       { headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, timeout: 60000 }
     );
-    console.log('📬 Bürgeramt-Email gesendet an ' + amtEmail + ' (' + bezirk + ') für ' + orderId);
+    console.log('\ud83d\udcec B\u00fcrgeramt-Email gesendet an ' + amtEmail + ' (' + bezirk + ') f\u00fcr ' + orderId);
     return { success: true, to: amtEmail, subject, bezirk, attachmentCount: attachments.length };
   } catch (err) {
-    console.error('❌ Bürgeramt-Email Fehler:', err.message);
+    console.error('\u274c B\u00fcrgeramt-Email Fehler:', err.message);
     return { success: false, error: err.message, to: amtEmail };
   }
 }

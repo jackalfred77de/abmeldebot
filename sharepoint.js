@@ -160,6 +160,7 @@ async function createLedgerEntry(session, fileUrls = {}) {
       NewAddress:   data.newFullAddress|| '',
       Nationality:  data.nationality   || '',
       Gender:       data.gender        || '',
+      FamilyMembers: JSON.stringify(data.familyMembers || []),
       Language:     session.lang       || '',
       ChatId:       String(session.chatId || ''),
       Status:       'email_sent',

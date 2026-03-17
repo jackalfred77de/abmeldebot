@@ -6,7 +6,7 @@ AbmeldeBot (@raferabmeldungbot) is a Telegram bot for Abmeldung (deregistration)
 ### Repo & infra
 - **Repo:** `jackalfred77de/abmeldebot` (GitHub)
 - **Local path:** `/Users/FredHome/Library/CloudStorage/OneDrive-FredericoReichel/BüroEasy - Documents/Abmeldung/abmeldebot`
-- **Deploy:** Railway (auto-deploy via `git push origin main`)
+- **Deploy:** Azure App Service (via GitHub Actions / git push origin main)
 - **Stack:** Node.js 20, Telegraf 4.15, Express, Microsoft Graph (email + SharePoint), Python 3 (PDF generation)
 
 ### What's already done

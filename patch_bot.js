@@ -227,5 +227,5 @@ if (changed === 0) {
   console.log(`\n💾  Backup guardado : ${BACKUP_PATH}`);
   fs.writeFileSync(BOT_PATH, src, 'utf8');
   console.log(`✅  bot.js actualizado: ${BOT_PATH}`);
-  console.log('\n🎉  Patch concluído! Reinicia o bot (Railway / PM2).');
+  console.log('\n🎉  Patch concluído! Reinicia o bot (Azure App Service / PM2).');
 }

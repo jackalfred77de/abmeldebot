@@ -114,9 +114,9 @@ Criar um flow:
 
 ---
 
-## 7. Variáveis Railway
+## 7. Variáveis Azure App Service
 
-Após obter os IDs, configurar no Railway → Variables:
+Após obter os IDs, configurar no Azure Portal → App Service → Configuration → Application settings:
 ```
 SP_SITE_ID=rafer.sharepoint.com,XXXX-XXXX,YYYY-YYYY
 SP_DRIVE_ID=b!XXXXXXXXXXXXXXXXXXXXXXXXXXXX

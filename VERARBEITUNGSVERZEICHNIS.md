@@ -68,7 +68,7 @@ Zusätzlich wird vor Beginn der Datenerhebung eine **ausdrückliche Einwilligung
 | Berliner Bürgerämter | Einreichung der Abmeldung (Full Service) | Art. 6 Abs. 1 lit. b DSGVO |
 | Microsoft Corporation (SharePoint/Exchange Online) | Dokumentenspeicherung, E-Mail-Versand | Auftragsverarbeitung (Art. 28 DSGVO) |
 | Telegram FZ-LLC | Kommunikationskanal mit dem Mandanten | Art. 6 Abs. 1 lit. b DSGVO |
-| Railway Inc. (Hosting) | Hosting des Bot-Servers | Auftragsverarbeitung (Art. 28 DSGVO) |
+| Microsoft Azure (Hosting) | Hosting des Bot-Servers (App Service) | Auftragsverarbeitung (Art. 28 DSGVO) |
 
 ---
 
@@ -77,7 +77,7 @@ Zusätzlich wird vor Beginn der Datenerhebung eine **ausdrückliche Einwilligung
 | Dienst | Sitz / Serverstandort | Garantien |
 |---|---|---|
 | Telegram FZ-LLC | Dubai (VAE) / UK / Singapur | EU-Standardvertragsklauseln (SCCs) |
-| Railway Inc. | USA | EU-Standardvertragsklauseln (SCCs), Data Privacy Framework |
+| Microsoft Corporation (Azure) | EU (West Europe) | EU-Standardvertragsklauseln (SCCs), Data Privacy Framework |
 | Microsoft Corporation | EU-Rechenzentren (primär), USA (Backup) | EU-Standardvertragsklauseln (SCCs), Data Privacy Framework |
 
 **Hinweis:** Personenbezogene Daten werden **nicht** an KI-Dienste oder sonstige Dritte übermittelt. Die Normalisierung von Nationalität und Geburtsort erfolgt ausschließlich über ein lokales Dictionary ohne externe API-Aufrufe.
@@ -108,7 +108,7 @@ Zusätzlich wird vor Beginn der Datenerhebung eine **ausdrückliche Einwilligung
 - Validierung aller Eingabedaten (Datum, E-Mail, PLZ)
 
 ### Verfügbarkeit
-- Railway-Hosting mit automatischem Restart
+- Azure App Service mit automatischem Restart (Always On)
 - Fehlerbehandlung und Logging im Bot
 
 ### Datenschutz by Design

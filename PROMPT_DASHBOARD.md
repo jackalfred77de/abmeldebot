@@ -6,10 +6,10 @@ Bot Telegram (@raferabmeldungbot) que automatiza Abmeldung (cancelamento de resi
 ## Repo e infra
 - **Repo:** `jackalfred77de/abmeldebot` (GitHub)
 - **Pasta local:** `/Users/FredHome/Library/CloudStorage/OneDrive-FredericoReichel/BüroEasy - Documents/Abmeldung/abmeldebot`
-- **Deploy:** Railway (auto-deploy via `git push origin main`)
+- **Deploy:** Azure App Service (via GitHub Actions / git push origin main)
 - **Runtime:** Node.js 20 + Python 3, Dockerfile `node:20-bullseye-slim`
 - **Entry point:** `node bot.js` (definido no Dockerfile CMD e package.json `scripts.start`)
-- **railway.toml:** `builder = "DOCKERFILE"`, `restartPolicyType = "ON_FAILURE"`
+- **Dockerfile:** Multi-stage build (Node.js + Python) deployed to Azure App Service
 
 ## Ficheiros existentes
 | Ficheiro | Linhas | O que faz |
@@ -175,8 +175,8 @@ Servido em `GET /` (ou `GET /dashboard`). HTML/CSS/JS tudo inline (single file, 
 1. **Não reescrever bot.js** — adicionar o Express server e os endpoints, manter tudo o que existe
 2. **Sem base de dados** — toda a persistência é SharePoint
 3. **Manter Dockerfile** — só adicionar `express` ao package.json
-4. **Railway** — o Express usa `process.env.PORT`, o bot Telegram usa long polling. Ambos no mesmo processo.
-5. **Deploy** — git push para main = auto-deploy no Railway
+4. **Azure** — o Express usa `process.env.PORT`, o bot Telegram usa long polling. Ambos no mesmo processo.
+5. **Deploy** — git push para main → GitHub Actions → auto-deploy no Azure App Service
 
 ## Para editar ficheiros locais
 - Para edições pequenas — usa `Filesystem:edit_file` com `oldText`/`newText` (procura e substitui)

@@ -1,30 +1,33 @@
 #!/bin/bash
 # startup.sh — Azure App Service startup script for AbmeldeBot
-# Ensures Python packages are available before starting the Node.js bot
+# Installs Python packages on first run, then starts Node.js bot
 
 echo "🚀 AbmeldeBot startup..."
 
-# Set Python packages path
-export PYTHONPATH="/home/site/wwwroot/python_packages:$PYTHONPATH"
+# Python packages directory (persistent across restarts on Azure)
+PY_PKG_DIR="/home/python_packages"
 
-# Verify Python is available
-if command -v python3 &> /dev/null; then
-    echo "✅ Python3 found: $(python3 --version)"
+# Check if Python packages are already installed
+if python3 -c "import sys; sys.path.insert(0,'$PY_PKG_DIR'); import pypdf; import fitz" 2>/dev/null; then
+    echo "✅ Python packages already installed"
 else
-    echo "⚠️ Python3 not found!"
+    echo "📦 Installing Python packages (first run)..."
+    pip install pypdf pymupdf reportlab --target "$PY_PKG_DIR" 2>&1 || \
+    pip3 install pypdf pymupdf reportlab --target "$PY_PKG_DIR" 2>&1 || \
+    python3 -m pip install pypdf pymupdf reportlab --target "$PY_PKG_DIR" 2>&1
+    echo "✅ Python packages installed"
 fi
 
-# Check if packages are installed
-python3 -c "import pypdf; import fitz; print('✅ Python packages OK')" 2>/dev/null
-if [ $? -ne 0 ]; then
-    echo "⚠️ Python packages missing, installing..."
-    pip install --user pypdf pymupdf reportlab 2>/dev/null || pip3 install --user pypdf pymupdf reportlab 2>/dev/null || true
-    export PYTHONPATH="$HOME/.local/lib/python3.*/site-packages:$PYTHONPATH"
-fi
+# Set PYTHONPATH so python3 finds the packages
+export PYTHONPATH="$PY_PKG_DIR:$PYTHONPATH"
 
-# Create pdfs directory if it doesn't exist
+# Verify
+python3 -c "import pypdf; import fitz; print('✅ Python imports OK: pypdf + pymupdf')" 2>&1 || echo "⚠️ Python import check failed"
+
+# Create pdfs directory
 mkdir -p /home/site/wwwroot/pdfs/archive
 
 # Start Node.js bot
-echo "🤖 Starting bot.js..."
-node /home/site/wwwroot/bot.js
+echo "🤖 Starting bot.js on port ${PORT:-8080}..."
+cd /home/site/wwwroot
+node bot.js

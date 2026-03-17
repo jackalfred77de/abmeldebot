@@ -2,3 +2,4 @@ node_modules/
 pdfs/
 .env
 *.log
+python_packages/

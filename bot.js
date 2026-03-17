@@ -52,10 +52,11 @@ function t(session, key) {
 // DSGVO: Anthropic API removed — using local dictionaries only (nationality.js)
 
 // Gerar Vollmacht PDF via Python
-// Build pyEnv helper — ensures PYTHONPATH includes .python_packages
+// Build pyEnv helper — ensures PYTHONPATH includes Python package dirs
 function getPyEnv() {
-  const pyPkgDir = path.join(BOT_DIR, '.python_packages');
-  return { ...process.env, PYTHONPATH: [pyPkgDir, process.env.PYTHONPATH || ''].filter(Boolean).join(':') };
+  const localPkgDir = path.join(BOT_DIR, '.python_packages');
+  const persistentPkgDir = '/home/python_packages'; // Azure persistent path
+  return { ...process.env, PYTHONPATH: [persistentPkgDir, localPkgDir, process.env.PYTHONPATH || ''].filter(Boolean).join(':') };
 }
 
 async function generateVollmacht(data) {

@@ -3,3 +3,4 @@ pdfs/
 .env
 *.log
 python_packages/
+.python_packages/

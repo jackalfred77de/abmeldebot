@@ -18,18 +18,6 @@ jobs:
       - name: Install Node dependencies
         run: npm install --production
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install Python packages into deploy bundle
-        run: |
-          pip install --target .python_packages pypdf pymupdf reportlab
-          echo "📋 Python packages installed:"
-          ls .python_packages/ | head -20
-          PYTHONPATH=.python_packages python3 -c "import pypdf; import fitz; import reportlab; print('✅ pypdf=' + pypdf.__version__)"
-
       - name: Make startup script executable
         run: chmod +x startup.sh
 

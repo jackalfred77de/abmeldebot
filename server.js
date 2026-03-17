@@ -6,7 +6,14 @@
 const express = require('express');
 const crypto  = require('crypto');
 const path    = require('path');
+const multer  = require('multer');
+const fs      = require('fs');
 const SP      = require('./sharepoint');
+
+// Multer config for file uploads (temp dir)
+const uploadDir = path.join(__dirname, 'pdfs', 'uploads_tmp');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+const upload = multer({ dest: uploadDir, limits: { fileSize: 10 * 1024 * 1024 } });
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -184,6 +191,53 @@ app.post('/api/cases/:orderId/send-to-amt', authMiddleware, async (req, res) => 
     res.json(result);
   } catch (err) {
     console.error('API send-to-amt error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Upload Abmeldebestätigung ───────────────────────────────────────────────
+app.post('/api/cases/:orderId/upload-bestaetigung', authMiddleware, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const { orderId } = req.params;
+    const caseData = await SP.getCase(orderId);
+    if (!caseData) {
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: 'Case not found' });
+    }
+
+    // Determine filename
+    const ext = path.extname(req.file.originalname || '').toLowerCase() || '.pdf';
+    const filename = `Abmeldebestaetigung_${orderId}${ext}`;
+
+    // Upload to SharePoint
+    const spUrl = await SP.uploadFile(orderId, req.file.path, filename);
+
+    // Update case status
+    const now = new Date().toLocaleDateString('de-DE');
+    await SP.updateCaseStatus(orderId, 'confirmation_received',
+      `Abmeldebestätigung manuell hochgeladen am ${now} via Dashboard`);
+    if (spUrl) {
+      await SP.updateCaseField(orderId, { AbmeldebestaetigungUrl: spUrl });
+    }
+
+    // Cleanup temp file
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
+
+    // Notify admin via Telegram
+    const tgBot = req.app.get('telegramBot');
+    const adminId = process.env.ADMIN_CHAT_ID;
+    if (tgBot && adminId) {
+      try {
+        await tgBot.telegram.sendMessage(adminId,
+          `✅ Abmeldebestätigung manuell hochgeladen\n👤 ${caseData.ClientName || orderId}\n📋 ${orderId}`);
+      } catch (_) {}
+    }
+
+    res.json({ ok: true, url: spUrl, filename });
+  } catch (err) {
+    if (req.file && req.file.path) try { fs.unlinkSync(req.file.path); } catch (_) {}
+    console.error('API upload-bestaetigung error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

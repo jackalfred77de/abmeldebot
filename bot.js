@@ -42,6 +42,7 @@ const { PLZ_MAP, getBezirk } = require('./plz_map');
 const translations = require('./translations');
 const { getGraphToken, sendAbmeldungEmail } = require('./email');
 const { startServer } = require('./server');
+const { startInboxMonitor } = require('./inbox_monitor');
 
 // Helper functions
 function t(session, key) {
@@ -809,6 +810,9 @@ async function startBot() {
 
   // Start Express dashboard server first
   try { await startServer(bot); } catch(e) { console.error('⚠️ Dashboard server error (non-fatal):', e.message); }
+
+  // Start inbox monitor (polls for Bürgeramt responses)
+  try { startInboxMonitor(bot); } catch(e) { console.error('⚠️ InboxMonitor start error (non-fatal):', e.message); }
   try { await bot.telegram.deleteWebhook({ drop_pending_updates: true }); console.log('🧹 Webhook limpo'); } catch(e) {}
   try {
     await bot.launch({ dropPendingUpdates: true, allowedUpdates: ['message', 'callback_query'] });

@@ -482,4 +482,6 @@ module.exports = {
   getCase,
   addCaseNote,
   deleteCase,
+  // Expose token getter for inbox_monitor.js
+  __getTokenForUpload: getToken,
 };

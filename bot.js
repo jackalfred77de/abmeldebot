@@ -212,7 +212,11 @@ bot.command('test', async (ctx) => {
     deliveryMethod: 'email', postalAddress: '', postalFee: 0,
     orderId: 'TEST-' + Date.now(),
   };
-  if (wantSig) {
+  if (arg.toLowerCase() === 'delivery') {
+    session.step = 'delivery_method';
+    await ctx.reply('🧪 *Modo de teste (Delivery)*\nDados pré-preenchidos até telefone.', { parse_mode: 'Markdown' });
+    await ctx.reply(t(session, 'ask_delivery_method'), { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback(t(session, 'delivery_email_btn'), 'delivery_email')],[Markup.button.callback(t(session, 'delivery_post_btn'), 'delivery_post')]]) });
+  } else if (wantSig) {
     session.step = 'signature';
     await ctx.reply('🧪 *Modo de teste (Full + assinatura)*\nDados pré-preenchidos.\n\n✍️ Envie agora uma *foto da sua assinatura*.', { parse_mode: 'Markdown' });
   } else {

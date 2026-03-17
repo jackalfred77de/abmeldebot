@@ -894,6 +894,13 @@ async function startBot() {
   try { startInboxMonitor(bot); } catch(e) { console.error('⚠️ InboxMonitor start error (non-fatal):', e.message); }
   try { await bot.telegram.deleteWebhook({ drop_pending_updates: true }); console.log('🧹 Webhook limpo'); } catch(e) { console.error('Webhook err:', e.message); }
   console.log('🚀 Calling bot.launch()...');
+  // DEBUG: test getUpdates manually before launch
+  try {
+    const me = await bot.telegram.getMe();
+    console.log('🤖 getMe OK:', me.username, me.id);
+    const testUpdates = await bot.telegram.callApi('getUpdates', { limit: 1, timeout: 2 });
+    console.log('📡 getUpdates test: got', testUpdates.length, 'updates');
+  } catch(e) { console.error('❌ API test error:', e.message); }
   try {
     await bot.launch({ dropPendingUpdates: true, allowedUpdates: ['message', 'callback_query'] });
     console.log('✅ AbmeldeBot gestartet!'); console.log('📱 Jetzt in Telegram: /start');

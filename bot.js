@@ -367,11 +367,22 @@ async function triggerPowerAutomate(session) {
       try { await bot.telegram.sendDocument(ADMIN_CHAT_ID, { source: session._vollmachtPath, filename: `Vollmacht_${session.data.orderId}.pdf` }, { caption: `📜 Vollmacht — ${session.data.firstName} ${session.data.lastName}` }); } catch(e) { console.log('Vollmacht admin error:', e.message); }
     }
     if (session.data.anmeldungFileId) { try { await bot.telegram.sendDocument(ADMIN_CHAT_ID, session.data.anmeldungFileId); } catch(e) { console.log('Anmeldung forward error:', e.message); } }
-    if (session.data.service === 'full' && session.data.sigMode === 'paste' && session._vollmachtPath && fs.existsSync(session._vollmachtPath) && String(session.chatId) !== String(ADMIN_CHAT_ID)) {
+    // Send Vollmacht to client for Full Service (both sig modes)
+    if (session.data.service === 'full' && session._vollmachtPath && fs.existsSync(session._vollmachtPath) && String(session.chatId) !== String(ADMIN_CHAT_ID)) {
       try {
         const lang = session.lang || 'de';
-        const vollmachtCaption = { de: '📜 *Ihre Vollmacht*\n\nBitte unterschreiben und an unser Büro senden.', pt: '📜 *Sua Procuração*\n\nPor favor assine e envie para o nosso escritório.', en: '📜 *Your Power of Attorney*\n\nPlease sign and send to our office.' };
-        await session.ctx.replyWithDocument({ source: session._vollmachtPath, filename: `Vollmacht_${session.data.orderId}.pdf` }, { caption: vollmachtCaption[lang] || vollmachtCaption['de'], parse_mode: 'Markdown' });
+        if (session.data.sigMode === 'self') {
+          // self-sign: send unsigned Vollmacht, ask client to sign and return it
+          await session.ctx.replyWithDocument({ source: session._vollmachtPath, filename: `Vollmacht_${session.data.orderId}.pdf` }, { caption: t(session, 'ask_vollmacht_return'), parse_mode: 'Markdown' });
+          // Pause flow — wait for signed Vollmacht before proceeding with email+SP
+          session.step = 'vollmacht_return';
+          session._pendingPdfPath = pdfPath; // save for later use in completeAfterVollmacht
+          return { success: true, pending_vollmacht: true };
+        } else {
+          // paste mode: signature already embedded, just inform client
+          const vollmachtCaption = { de: '📜 *Ihre Vollmacht*\n\nBitte unterschreiben und an unser Büro senden.', pt: '📜 *Sua Procuração*\n\nPor favor assine e envie para o nosso escritório.', en: '📜 *Your Power of Attorney*\n\nPlease sign and send to our office.' };
+          await session.ctx.replyWithDocument({ source: session._vollmachtPath, filename: `Vollmacht_${session.data.orderId}.pdf` }, { caption: vollmachtCaption[lang] || vollmachtCaption['de'], parse_mode: 'Markdown' });
+        }
       } catch(e) { console.log('Vollmacht cliente error:', e.message); }
     }
     const result = await sendAbmeldungEmail(session.data.email, pdfPath, session, buildIdPdf);
@@ -382,6 +393,47 @@ async function triggerPowerAutomate(session) {
     SP.processCaseToSharePoint(session, archivePath, session._vollmachtPath || null, bot).catch(e => console.error('SP non-fatal error:', e.message));
     return result;
   } catch (err) { console.error('❌ PDF/email error:', err.message); return { success: false, error: err.message }; }
+}
+
+// ─── COMPLETE AFTER VOLLMACHT RETURN ────────────────────────────────────────
+async function completeAfterVollmacht(ctx, session) {
+  try {
+    session.ctx = ctx;
+    const pdfPath = session._pendingPdfPath;
+    if (!pdfPath || !fs.existsSync(pdfPath)) {
+      console.error('❌ completeAfterVollmacht: pendingPdfPath missing or file gone');
+      await ctx.reply(t(session, 'error_general'));
+      return;
+    }
+    // Forward signed Vollmacht to admin
+    if (session.data.signedVollmachtFileId && ADMIN_CHAT_ID) {
+      try {
+        await bot.telegram.sendDocument(ADMIN_CHAT_ID, session.data.signedVollmachtFileId, {
+          caption: `✅ Unterschriebene Vollmacht — ${session.data.firstName} ${session.data.lastName} (${session.data.orderId})`
+        });
+      } catch(e) { console.log('Signed Vollmacht admin forward error:', e.message); }
+    }
+    // Continue with email + SharePoint (same as triggerPowerAutomate tail)
+    const result = await sendAbmeldungEmail(session.data.email, pdfPath, session, buildIdPdf);
+    const archiveDir = path.join(BOT_DIR, 'pdfs', 'archive');
+    if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
+    const archivePath = path.join(archiveDir, path.basename(pdfPath));
+    try { fs.renameSync(pdfPath, archivePath); console.log('📁 PDF arquivado:', archivePath); } catch (_) {}
+    SP.processCaseToSharePoint(session, archivePath, session._vollmachtPath || null, bot).catch(e => console.error('SP non-fatal error:', e.message));
+    const lang = session.lang || 'de';
+    const doneMsgs = {
+      de: result.success ? '📧 *Fertig!* Das Formular wurde an *' + session.data.email + '* gesendet.' + (result.simulated ? '\n\n_(Simulation)_' : '') : '⚠️ E-Mail konnte nicht gesendet werden. info@rafer.de\nBestellnummer: `' + session.data.orderId + '`',
+      pt: result.success ? '📧 *Pronto!* O formulário foi enviado para *' + session.data.email + '*.' + (result.simulated ? '\n\n_(Simulação)_' : '') : '⚠️ Não foi possível enviar o e-mail. info@rafer.de\nPedido: `' + session.data.orderId + '`',
+      en: result.success ? '📧 *Done!* The form was sent to *' + session.data.email + '*.' + (result.simulated ? '\n\n_(Simulation)_' : '') : '⚠️ Could not send email. info@rafer.de\nOrder: `' + session.data.orderId + '`',
+    };
+    await ctx.reply(doneMsgs[lang], { parse_mode: 'Markdown' });
+    await notifyAdmin(session);
+    session.step = 'done';
+    deleteSession(ctx.chat.id);
+  } catch(err) {
+    console.error('❌ completeAfterVollmacht error:', err.message);
+    await ctx.reply(t(session, 'error_general'));
+  }
 }
 
 // ─── PAYMENT CONFIRMED ──────────────────────────────────────────────────
@@ -399,6 +451,8 @@ async function handlePaymentConfirmed(ctx, session) {
   await ctx.reply(ackMsgs[lang], { parse_mode: 'Markdown' });
   session.ctx = ctx;
   const result = await triggerPowerAutomate(session);
+  // If Vollmacht return is pending (Full Service + self-sign), don't finalize yet
+  if (result.pending_vollmacht) return;
   const doneMsgs = {
     de: result.success ? '📧 *Fertig!* Das Formular wurde an *' + session.data.email + '* gesendet.' + (result.simulated ? '\n\n_(Simulation)_' : '') : '⚠️ E-Mail konnte nicht gesendet werden. info@rafer.de\nBestellnummer: `' + session.data.orderId + '`',
     pt: result.success ? '📧 *Pronto!* O formulário foi enviado para *' + session.data.email + '*.' + (result.simulated ? '\n\n_(Simulação)_' : '') : '⚠️ Não foi possível enviar o e-mail. info@rafer.de\nPedido: `' + session.data.orderId + '`',
@@ -604,6 +658,7 @@ bot.on('photo', async (ctx) => {
     case 'anmeldung': { const afid = ctx.message.photo ? ctx.message.photo[ctx.message.photo.length-1].file_id : null; if (afid) { session.data.anmeldungFileId = afid; await ctx.reply('✅ Anmeldung recebida!'); } await askFamily(ctx, session); break; }
     case 'family_doc_front': { const members = session.data.familyMembers || []; const idx = members.length - 1; if (idx >= 0 && typeof members[idx] === 'object') { members[idx].docFrontFileId = photo.file_id; members[idx].docFrontImage = base64Image; } await ctx.reply(t(session, 'family_doc_received')); if (idx >= 0 && typeof members[idx] === 'object' && members[idx].docType === 'id') { session.step = 'family_doc_back'; await ctx.reply(t(session, 'ask_family_doc_back').replace('{n}', idx + 1)); } else { await finishFamilyMember(ctx, session); } break; }
     case 'family_doc_back': { const members2 = session.data.familyMembers || []; const idx2 = members2.length - 1; if (idx2 >= 0 && typeof members2[idx2] === 'object') { members2[idx2].docBackFileId = photo.file_id; members2[idx2].docBackImage = base64Image; } await ctx.reply(t(session, 'family_doc_received')); await finishFamilyMember(ctx, session); break; }
+    case 'vollmacht_return': { session.data.signedVollmachtImage = base64Image; session.data.signedVollmachtFileId = photo.file_id; await ctx.reply(t(session, 'vollmacht_return_received')); await completeAfterVollmacht(ctx, session); break; }
   }
 });
 
@@ -640,6 +695,7 @@ bot.on('document', async (ctx) => {
     case 'family_doc_front': { const members = session.data.familyMembers || []; const idx = members.length - 1; if (idx >= 0 && typeof members[idx] === 'object') { members[idx].docFrontFileId = doc.file_id; members[idx].docFrontImage = base64Image; } await ctx.reply(t(session, 'family_doc_received')); if (idx >= 0 && typeof members[idx] === 'object' && members[idx].docType === 'id') { session.step = 'family_doc_back'; await ctx.reply(t(session, 'ask_family_doc_back').replace('{n}', idx + 1)); } else { await finishFamilyMember(ctx, session); } break; }
     case 'family_doc_back': { const members2 = session.data.familyMembers || []; const idx2 = members2.length - 1; if (idx2 >= 0 && typeof members2[idx2] === 'object') { members2[idx2].docBackFileId = doc.file_id; members2[idx2].docBackImage = base64Image; } await ctx.reply(t(session, 'family_doc_received')); await finishFamilyMember(ctx, session); break; }
     case 'vollmacht': session.data.vollmachtFileId = doc.file_id; await ctx.reply('✅ Vollmacht recebida!'); session.ctx = ctx; await triggerPowerAutomate(session); await ctx.reply(t(session, 'done_message')); session.step = 'done'; break;
+    case 'vollmacht_return': { session.data.signedVollmachtFileId = doc.file_id; if (base64Image) session.data.signedVollmachtImage = base64Image; await ctx.reply(t(session, 'vollmacht_return_received')); await completeAfterVollmacht(ctx, session); break; }
   }
 });
 

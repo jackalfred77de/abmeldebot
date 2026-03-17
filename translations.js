@@ -83,6 +83,8 @@ const translations = {
     consent_yes: '✅ Ja, einverstanden',
     consent_no: '❌ Nein, abbrechen',
     consent_declined: '❌ Einwilligung nicht erteilt. Ihre Daten werden nicht verarbeitet.\n\nBei Fragen: info@rafer.de\n/start um neu zu beginnen.',
+    ask_vollmacht_return: '📜 **Bitte unterschreiben Sie die Vollmacht und senden Sie sie zurück.**\n\nSie können:\n1️⃣ Die PDF digital unterschreiben und hier senden\n2️⃣ Ausdrucken, per Hand unterschreiben, abfotografieren und hier senden\n\n⚠️ Ohne die unterschriebene Vollmacht können wir Ihre Abmeldung nicht beim Bürgeramt einreichen.',
+    vollmacht_return_received: '✅ Unterschriebene Vollmacht erhalten! Wir prüfen Ihre Unterlagen und reichen die Abmeldung beim Bürgeramt ein.',
     cancel: 'Abgebrochen. /start für Neustart.',
     help: '📚 **Hilfe**\n\n/start - Neu starten\n/cancel - Abbrechen\n/help - Diese Hilfe\n\n📧 info@rafer.de\n🏢 Katzbachstraße 18, 10965 Berlin'
   },
@@ -168,6 +170,8 @@ const translations = {
     consent_yes: '✅ Sim, concordo',
     consent_no: '❌ Não, cancelar',
     consent_declined: '❌ Consentimento não concedido. Seus dados não serão processados.\n\nDúvidas: info@rafer.de\n/start para recomeçar.',
+    ask_vollmacht_return: '📜 **Por favor assine a Procuração (Vollmacht) e envie de volta.**\n\nVocê pode:\n1️⃣ Assinar o PDF digitalmente e enviar aqui\n2️⃣ Imprimir, assinar à mão, fotografar e enviar aqui\n\n⚠️ Sem a procuração assinada, não podemos enviar sua Abmeldung ao Bürgeramt.',
+    vollmacht_return_received: '✅ Procuração assinada recebida! Vamos verificar seus documentos e enviar a Abmeldung ao Bürgeramt.',
     cancel: 'Cancelado. /start para recomeçar.',
     help: '📚 **Ajuda**\n\n/start - Recomeçar\n/cancel - Cancelar\n/help - Ajuda\n\n📧 info@rafer.de\n🏢 Katzbachstraße 18, 10965 Berlin'
   },
@@ -253,6 +257,8 @@ const translations = {
     consent_yes: '✅ Yes, I agree',
     consent_no: '❌ No, cancel',
     consent_declined: '❌ Consent not given. Your data will not be processed.\n\nQuestions: info@rafer.de\n/start to restart.',
+    ask_vollmacht_return: '📜 **Please sign the Vollmacht (power of attorney) and send it back.**\n\nYou can:\n1️⃣ Sign the PDF digitally and send it here\n2️⃣ Print it, sign by hand, take a photo and send it here\n\n⚠️ Without the signed Vollmacht, we cannot submit your Abmeldung to the Bürgeramt.',
+    vollmacht_return_received: '✅ Signed Vollmacht received! We will review your documents and submit your Abmeldung to the Bürgeramt.',
     cancel: 'Cancelled. /start to restart.',
     help: '📚 **Help**\n\n/start - Restart\n/cancel - Cancel\n/help - Help\n\n📧 info@rafer.de\n🏢 Katzbachstraße 18, 10965 Berlin'
   }

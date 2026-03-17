@@ -705,6 +705,15 @@ bot.on('text', async (ctx) => {
     case 'family_birthcountry': session.data._tempFamilyBirthCountry = text; session.step = 'family_gender'; { const memberNum = (session.data.familyMembers || []).length + 1; await ctx.reply(t(session, 'ask_family_gender').replace('{n}', memberNum), Markup.inlineKeyboard([[Markup.button.callback('♂ männlich / masculino / male','fgender_m')],[Markup.button.callback('♀ weiblich / feminino / female','fgender_f')],[Markup.button.callback('⚧ divers / outro / other','fgender_d')]])); } break;
     case 'family_gender': session.data._tempFamilyGender = text; session.step = 'family_nationality'; { const memberNum = session.data.familyMembers.length + 1; const natText = t(session, 'ask_family_nationality').replace('{n}', memberNum); const buttons = session.data.nationality ? Markup.inlineKeyboard([[Markup.button.callback(t(session, 'family_same_nationality') + ` (${session.data.nationality})`, 'fnat_same')]]) : undefined; await ctx.reply(natText, buttons); } break;
     case 'family_nationality': { if (!session.data.familyMembers) session.data.familyMembers = []; const natVal = normalizeNationality(text); session.data.familyMembers.push({ raw: session.data._tempFamilyRaw, gender: session.data._tempFamilyGender || '', nationality: natVal, birthPlace: session.data._tempFamilyBirthPlace || '', birthCountry: session.data._tempFamilyBirthCountry || '' }); delete session.data._tempFamilyRaw; delete session.data._tempFamilyGender; delete session.data._tempFamilyBirthPlace; delete session.data._tempFamilyBirthCountry; await askFamilyDocType(ctx, session); } break;
+    default: {
+      if (session.step && !['language','service','consent','done','gender','wohnungtyp','delivery_method','signature','id_front','id_back','anmeldung','family_doc_front','family_doc_back','vollmacht_return','admin_upload_bestaetigung','family_gender'].includes(session.step)) {
+        console.log('⚠️ Unhandled text step [chat=' + ctx.chat.id + ', step=' + session.step + ']: ' + text.substring(0, 50));
+        const lang = (session && session.lang) || 'de';
+        const msgs = { de: '⚠️ Sitzung verloren. Bitte /start erneut.', pt: '⚠️ Sessão perdida. Por favor, /start novamente.', en: '⚠️ Session lost. Please /start again.' };
+        await ctx.reply(msgs[lang] || msgs.de);
+      }
+      break;
+    }
   }
 });
 
@@ -834,8 +843,15 @@ async function showSummary(ctx, session) {
 bot.catch((err, ctx) => {
   if (err.message && err.message.includes('query is too old')) return;
   if (err.response && err.response.description && err.response.description.includes('query ID is invalid')) return;
-  console.error('Bot error:', err);
-  try { ctx.reply('❌ Fehler. Bitte /start'); } catch(_) {}
+  const chatId = ctx && ctx.chat ? ctx.chat.id : 'unknown';
+  const session = chatId !== 'unknown' ? sessions.get(chatId) : null;
+  console.error('Bot error [chat=' + chatId + ', step=' + (session ? session.step : 'no-session') + ']:', err.message || err);
+  console.error('Stack:', err.stack || 'no stack');
+  try {
+    const lang = (session && session.lang) || 'de';
+    const msgs = { de: '❌ Ein Fehler ist aufgetreten. Bitte /start erneut.', pt: '❌ Ocorreu um erro. Por favor, /start novamente.', en: '❌ An error occurred. Please /start again.' };
+    ctx.reply(msgs[lang] || msgs.de);
+  } catch(_) {}
 });
 
 async function startBot() {

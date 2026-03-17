@@ -920,9 +920,13 @@ function renderSidebar(c) {
       <div class="detail-row"><span class="label">Berliner Adresse</span><span class="val">${esc(c.BerlinAddress || '–')}</span></div>
       <div class="detail-row"><span class="label">Auszugsdatum</span><span class="val">${esc(c.MoveOutDate || '–')}</span></div>
       <div class="detail-row"><span class="label">Neue Adresse</span><span class="val">${esc(c.NewAddress || '–')}</span></div>
-      <div class="detail-row"><span class="label">Zustellung</span><span class="val">${c.DeliveryMethod === 'post' ? '📮 Post (€15,00)' : '📧 E-Mail'}</span></div>
-      ${c.DeliveryMethod === 'post' && c.PostalAddress ? `<div class="detail-row"><span class="label">Postadresse</span><span class="val">${esc(c.PostalAddress)}</span></div>` : ''}
-      <div class="detail-row"><span class="label">Gesamtpreis</span><span class="val" style="font-weight:600">€${(c.TotalPrice || 0).toFixed ? (c.TotalPrice || 0).toFixed(2) : (c.TotalPrice || '0.00')}</span></div>
+      <div class="detail-row"><span class="label">Zustellung</span><span class="val">${c.DeliveryMethod === 'post' ? '📮 Post' : '📧 E-Mail'}</span></div>
+      ${c.DeliveryMethod === 'post' ? `
+      <div class="detail-row"><span class="label">Postadresse</span><span class="val">${esc(c.PostalAddress || '–')}</span></div>
+      <div class="detail-row"><span class="label">Bearbeitung</span><span class="val">€${((c.PostalFee || 0)*1).toFixed(2)}</span></div>
+      <div class="detail-row"><span class="label">Versandkosten</span><span class="val"><input type="number" id="shippingInput" value="${(c.ShippingCost || 0)*1}" min="0" step="0.01" style="width:70px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right" onchange="updateShipping('${esc(c.Title)}',this.value)"> €</span></div>
+      ` : ''}
+      <div class="detail-row"><span class="label">Gesamtpreis</span><span class="val" style="font-weight:600">€${(((c.TotalPrice || 0)*1) + ((c.ShippingCost || 0)*1)).toFixed(2)}${c.DeliveryMethod === 'post' && !(c.ShippingCost > 0) ? ' <span style="color:var(--yellow);font-size:11px">(Versand offen)</span>' : ''}</span></div>
       <div class="detail-row"><span class="label">Erstellt</span><span class="val">${formatDate(c.CreatedAt)}</span></div>
       <div class="detail-row"><span class="label">Aktualisiert</span><span class="val">${formatDate(c.LastUpdated)}</span></div>
     </div>
@@ -974,6 +978,15 @@ async function updateStatus(newStatus) {
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
   }
+}
+
+async function updateShipping(orderId, value) {
+  const cost = parseFloat(value) || 0;
+  try {
+    await apiCall('POST', '/api/cases/' + orderId + '/shipping', { shippingCost: cost });
+    showToast('Versandkosten gespeichert: \u20ac' + cost.toFixed(2));
+    await fetchCases();
+  } catch(e) { showToast('Fehler: ' + e.message, 'error'); }
 }
 
 async function addNote() {

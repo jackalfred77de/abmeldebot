@@ -174,6 +174,7 @@ async function createLedgerEntry(session, fileUrls = {}) {
       DeliveryMethod: data.deliveryMethod || 'email',
       PostalAddress:  data.postalAddress  || '',
       PostalFee:      data.postalFee      || 0,
+      ShippingCost:   0,
       TotalPrice:     data.totalPrice     || 0,
       AbmeldebestaetigungUrl: '',
       Notes:        '',
@@ -401,6 +402,27 @@ async function addCaseNote(orderId, note) {
   return itemId;
 }
 
+// ── Atualizar campos arbitrários de um caso no ledger ─────────────────
+async function updateCaseField(orderId, fieldsToUpdate = {}) {
+  if (!LIST_ID) return null;
+  const token = await getToken();
+  const search = await axios.get(
+    `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$filter=fields/Title eq '${orderId}'&$expand=fields`,
+    { headers: headers(token), timeout: 15000 }
+  );
+  const items = search.data.value;
+  if (!items || items.length === 0) throw new Error(`Case ${orderId} not found`);
+  const itemId = items[0].id;
+  const now = new Date().toISOString();
+  await axios.patch(
+    `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items/${itemId}/fields`,
+    { ...fieldsToUpdate, LastUpdated: now },
+    { headers: headers(token), timeout: 15000 }
+  );
+  console.log(`🔧 SP: Fields updated for ${orderId}:`, Object.keys(fieldsToUpdate).join(', '));
+  return itemId;
+}
+
 // ── DSGVO: Fall komplett löschen (Listeneintrag + Ordner) ─────────────────
 async function deleteCase(orderId) {
   if (!isConfigured()) throw new Error('SharePoint not configured');
@@ -454,6 +476,7 @@ module.exports = {
   uploadTelegramPhoto,
   createLedgerEntry,
   updateCaseStatus,
+  updateCaseField,
   processCaseToSharePoint,
   listCases,
   getCase,

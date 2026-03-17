@@ -759,7 +759,9 @@ async function showSummary(ctx, session) {
   const deliveryLine = data.deliveryMethod === 'post'
     ? t(session, 'delivery_post_label') + (data.postalAddress ? `\n📮 ${data.postalAddress}` : '')
     : t(session, 'delivery_email_label');
-  const totalLine = t(session, 'total_price_label').replace('{total}', data.totalPrice.toFixed(2));
+  const totalLine = data.deliveryMethod === 'post'
+    ? t(session, 'total_price_label').replace('{total}', data.totalPrice.toFixed(2))
+    : t(session, 'total_price_label').replace('{total}', data.totalPrice.toFixed(2)).replace(/\s*\(.*\)/, '');
   const summary = t(session, 'summary')
     .replace('{firstName}', data.firstName || '–').replace('{lastName}', data.lastName || '–')
     .replace('{birthDate}', data.birthDate || '–').replace('{birthPlace}', data.birthPlace || '–').replace('{birthCountry}', data.birthCountry || '–')

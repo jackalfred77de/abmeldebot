@@ -120,6 +120,17 @@ app.post('/api/cases/:orderId/notes', authMiddleware, async (req, res) => {
 });
 
 
+app.post('/api/cases/:orderId/shipping', authMiddleware, async (req, res) => {
+  try {
+    const { shippingCost } = req.body || {};
+    const cost = parseFloat(shippingCost) || 0;
+    await SP.updateCaseField(req.params.orderId, { ShippingCost: cost });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('API POST shipping error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Bürgeramt email: preview ────────────────────────────────────────────────
 app.get('/api/cases/:orderId/preview-amt-email', authMiddleware, async (req, res) => {

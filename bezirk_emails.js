@@ -1,24 +1,22 @@
 // ─── bezirk_emails.js ──────────────────────────────────────────────────────
 // Zuordnung: Berliner Bezirk → Bürgeramt-E-Mail-Adresse
 //
-// ⚠️  WICHTIG: Alle E-Mail-Adressen vor dem Produktiveinsatz verifizieren!
-//     Bürgerämter ändern gelegentlich ihre Kontaktdaten.
-//     Stand: März 2026 — Quellen: berlin.de / Bezirksamt-Webseiten
+// ✅ Verifiziert am 17.03.2026 via service.berlin.de + beratungsstellen.berlin
 // ───────────────────────────────────────────────────────────────────────────
 
 const BEZIRK_EMAILS = {
   'Mitte':                       'buergeramt@ba-mitte.berlin.de',
   'Friedrichshain-Kreuzberg':    'buergeramt@ba-fk.berlin.de',
   'Pankow':                      'buergeramt@ba-pankow.berlin.de',
-  'Charlottenburg-Wilmersdorf':  'buergeramt@ba-cw.berlin.de',
-  'Spandau':                     'buergeramt@ba-spandau.berlin.de',
+  'Charlottenburg-Wilmersdorf':  'buergeramt@charlottenburg-wilmersdorf.de',
+  'Spandau':                     'buergeramt-rathaus@ba-spandau.berlin.de',
   'Steglitz-Zehlendorf':         'buergeramt@ba-sz.berlin.de',
   'Tempelhof-Schöneberg':        'buergeramt@ba-ts.berlin.de',
-  'Neukölln':                    'buergeramt@ba-neukoelln.berlin.de',
-  'Treptow-Köpenick':            'buergeramt@ba-tk.berlin.de',
-  'Marzahn-Hellersdorf':         'buergeramt@ba-mh.berlin.de',
-  'Lichtenberg':                 'buergeramt@ba-lichtenberg.berlin.de',
-  'Reinickendorf':               'buergeramt@ba-reinickendorf.berlin.de',
+  'Neukölln':                    'buergeramt@bezirksamt-neukoelln.de',
+  'Treptow-Köpenick':            'buergeramt-1@ba-tk.berlin.de',
+  'Marzahn-Hellersdorf':         'buergeramt.marzahnerpromenade@ba-mh.verwalt-berlin.de',
+  'Lichtenberg':                 'LichtenbergerBuergeramt@lichtenberg.berlin.de',
+  'Reinickendorf':               'buergeraemter@reinickendorf.berlin.de',
 };
 
 /**

@@ -242,6 +242,75 @@ app.post('/api/cases/:orderId/upload-bestaetigung', authMiddleware, upload.singl
   }
 });
 
+// ── Send Abmeldebestätigung to client by email ──────────────────────────────
+app.post('/api/cases/:orderId/send-bestaetigung', authMiddleware, async (req, res) => {
+  try {
+    const { sendBestaetigung } = require('./email');
+    const caseData = await SP.getCase(req.params.orderId);
+    if (!caseData) return res.status(404).json({ error: 'Case not found' });
+
+    const result = await sendBestaetigung(caseData);
+    if (!result.success) return res.status(500).json(result);
+
+    const now = new Date().toLocaleDateString('de-DE');
+    await SP.updateCaseStatus(req.params.orderId, 'delivery_email_sent',
+      'Abmeldebestätigung per Email an ' + (caseData.Email || '') + ' gesendet am ' + now + ' (manuell via Dashboard)');
+    await SP.updateCaseStatus(req.params.orderId, 'completed',
+      'Fall abgeschlossen — Bestätigung per Email zugestellt');
+
+    const chatId = caseData.ChatId;
+    const tgBot = req.app.get('telegramBot');
+    if (tgBot && chatId) {
+      const lang = (caseData.Language || 'de').toLowerCase();
+      const msgs = {
+        de: '📋 Ihre Abmeldebestätigung wurde per Email gesendet. Bitte prüfen Sie Ihr Postfach.',
+        pt: '📋 A sua Abmeldebestätigung foi enviada por email. Verifique a sua caixa de entrada.',
+        en: '📋 Your Abmeldebestätigung has been sent by email. Please check your inbox.',
+      };
+      try { await tgBot.telegram.sendMessage(chatId, msgs[lang] || msgs.de); } catch (_) {}
+    }
+
+    res.json({ ok: true, to: result.to });
+  } catch (err) {
+    console.error('API send-bestaetigung error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Mark as posted (postal delivery) ────────────────────────────────────────
+app.post('/api/cases/:orderId/mark-posted', authMiddleware, async (req, res) => {
+  try {
+    const { trackingCode } = req.body || {};
+    const caseData = await SP.getCase(req.params.orderId);
+    if (!caseData) return res.status(404).json({ error: 'Case not found' });
+
+    const now = new Date().toLocaleDateString('de-DE');
+    const trackingNote = trackingCode ? ' Tracking: ' + trackingCode : '';
+    await SP.updateCaseStatus(req.params.orderId, 'delivery_post_sent',
+      'Per Post versendet am ' + now + '.' + trackingNote);
+    await SP.updateCaseStatus(req.params.orderId, 'completed',
+      'Fall abgeschlossen — Bestätigung per Post versendet');
+
+    const chatId = caseData.ChatId;
+    const tgBot = req.app.get('telegramBot');
+    if (tgBot && chatId) {
+      const lang = (caseData.Language || 'de').toLowerCase();
+      const address = caseData.PostalAddress || '';
+      const msgs = {
+        de: '📮 Ihre Abmeldebestätigung wurde per Post an ' + address + ' versendet.',
+        pt: '📮 A sua Abmeldebestätigung foi enviada por correio para ' + address + '.',
+        en: '📮 Your Abmeldebestätigung has been sent by post to ' + address + '.',
+      };
+      try { await tgBot.telegram.sendMessage(chatId, msgs[lang] || msgs.de); } catch (_) {}
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('API mark-posted error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Health check ────────────────────────────────────────────────────────────
 // ── DSGVO: Delete case (list item + folder) ─────────────────────────────────
 app.delete('/api/cases/:orderId', authMiddleware, async (req, res) => {

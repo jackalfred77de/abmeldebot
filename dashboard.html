@@ -267,6 +267,9 @@ tbody td {
 .days-badge.warn { background: var(--yellow-bg); color: var(--yellow); }
 .days-badge.danger { background: var(--red-bg); color: var(--red); }
 .days-badge.ok { background: var(--gray-bg); color: var(--gray); }
+.badge-delivery_email_sent { background: #d1fae5; color: #065f46; }
+.badge-delivery_post_pending { background: #fff3e0; color: #e65100; }
+.badge-delivery_post_sent { background: #d1fae5; color: #065f46; }
 .badge-rejected { background: var(--red-bg); color: var(--red); }
 .badge-on_hold { background: var(--gray-bg); color: var(--gray); }
 .badge-cancelled { background: var(--gray-bg); color: var(--gray); }
@@ -564,6 +567,14 @@ tbody td {
         <div class="label" style="color:#0369a1">Warten auf Amt</div>
         <div class="value" style="color:#0369a1" id="cntAwaitingAmt">–</div>
       </div>
+      <div class="counter-card" style="cursor:pointer" onclick="document.getElementById('filterStatus').value='confirmation_received';applyFilters()">
+        <div class="label" style="color:#065f46">📩 Bestätigung</div>
+        <div class="value" style="color:#065f46" id="cntConfirmation">–</div>
+      </div>
+      <div class="counter-card" style="cursor:pointer" onclick="document.getElementById('filterStatus').value='delivery_post_pending';applyFilters()">
+        <div class="label" style="color:#e65100">📮 Post ausstehend</div>
+        <div class="value" style="color:#e65100" id="cntPostPending">–</div>
+      </div>
       <div class="counter-card completed">
         <div class="label">Abgeschlossen</div>
         <div class="value" id="cntCompleted">–</div>
@@ -581,6 +592,9 @@ tbody td {
         <option value="submitted_to_behoerde">Submitted</option>
         <option value="sent_to_amt">Sent to Amt</option>
         <option value="confirmation_received">Bestätigung erhalten</option>
+        <option value="delivery_email_sent">Email zugestellt</option>
+        <option value="delivery_post_pending">Post ausstehend</option>
+        <option value="delivery_post_sent">Post versendet</option>
         <option value="completed">Completed</option>
         <option value="rejected">Rejected</option>
         <option value="on_hold">On Hold</option>
@@ -679,7 +693,8 @@ function statusLabel(s) {
   const map = {
     created: 'Created', pdf_generated: 'PDF Generated', email_sent: 'Email Sent',
     pending_review: 'Pending Review', submitted_to_behoerde: 'Submitted', sent_to_amt: 'Sent to Amt',
-    confirmation_received: 'Bestätigung erhalten', completed: 'Completed',
+    confirmation_received: 'Bestätigung erhalten', delivery_email_sent: 'Email zugestellt',
+    delivery_post_pending: 'Post ausstehend', delivery_post_sent: 'Post versendet', completed: 'Completed',
     rejected: 'Rejected', on_hold: 'On Hold', cancelled: 'Cancelled'
   };
   return map[s] || s || '–';
@@ -786,7 +801,9 @@ function updateCounters() {
   $('cntPending').textContent = allCases.filter(c => ['created','pdf_generated','email_sent','pending_review'].includes(c.Status)).length;
   $('cntSubmitted').textContent = allCases.filter(c => c.Status === 'submitted_to_behoerde' || c.Status === 'sent_to_amt').length;
   $('cntAwaitingAmt').textContent = allCases.filter(c => c.Status === 'sent_to_amt').length;
-  $('cntCompleted').textContent = allCases.filter(c => c.Status === 'completed' || c.Status === 'confirmation_received').length;
+  $('cntConfirmation').textContent = allCases.filter(c => c.Status === 'confirmation_received').length;
+  $('cntPostPending').textContent = allCases.filter(c => c.Status === 'delivery_post_pending').length;
+  $('cntCompleted').textContent = allCases.filter(c => c.Status === 'completed' || c.Status === 'delivery_email_sent' || c.Status === 'delivery_post_sent').length;
 }
 
 function applyFilters() {
@@ -964,12 +981,14 @@ function renderSidebar(c) {
   `;
 
   // Actions
-  const isFinal = ['completed','cancelled'].includes(c.Status);
+  const isFinal = ['completed','cancelled','delivery_email_sent','delivery_post_sent'].includes(c.Status);
   $('sidebarActions').innerHTML = `
     <div class="action-buttons">
       <button class="btn-action btn-submit" onclick="updateStatus('submitted_to_behoerde')" ${isFinal ? 'disabled' : ''}>📤 Einreichen</button>
       ${(c.Service === 'full' && c.Status === 'submitted_to_behoerde') ? '<button class="btn-action" style="background:#0369a1;color:#fff;" onclick="previewAmtEmail()">📬 An Bürgeramt senden</button>' : ''}
       ${(c.Status === 'sent_to_amt') ? '<button class="btn-action" style="background:#065f46;color:#fff;" onclick="triggerUploadBestaetigung()">📎 Bestätigung hochladen</button>' : ''}
+      ${(c.Status === 'confirmation_received') ? '<button class="btn-action" style="background:#065f46;color:#fff;" onclick="sendBestaetigung()">📧 Per Email senden</button>' : ''}
+      ${(c.Status === 'confirmation_received' || c.Status === 'delivery_post_pending') ? '<button class="btn-action" style="background:#e65100;color:#fff;" onclick="markAsPosted()">📮 Per Post versendet</button>' : ''}
       <button class="btn-action btn-approve" onclick="updateStatus('completed')" ${isFinal ? 'disabled' : ''}>✓ Abschließen</button>
       <button class="btn-action btn-reject" onclick="updateStatus('rejected')" ${isFinal ? 'disabled' : ''}>✗ Ablehnen</button>
       <button class="btn-action btn-hold" onclick="updateStatus('on_hold')" ${isFinal ? 'disabled' : ''}>⏸ Halten</button>
@@ -1094,6 +1113,32 @@ function triggerUploadBestaetigung() {
     }
   };
   inp.click();
+}
+
+async function sendBestaetigung() {
+  if (!selectedOrderId) return;
+  const confirmed = confirm('Abmeldebest\u00e4tigung per Email an den Mandanten senden?');
+  if (!confirmed) return;
+  try {
+    const data = await apiCall('POST', '/api/cases/' + selectedOrderId + '/send-bestaetigung');
+    showToast('\u2705 Abmeldebest\u00e4tigung per Email gesendet' + (data.to ? ' an ' + data.to : ''));
+    await fetchCases();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+async function markAsPosted() {
+  if (!selectedOrderId) return;
+  const trackingCode = prompt('Sendungsverfolgungsnummer (optional):');
+  if (trackingCode === null) return; // cancelled
+  try {
+    await apiCall('POST', '/api/cases/' + selectedOrderId + '/mark-posted', { trackingCode: trackingCode || '' });
+    showToast('\ud83d\udcee Als per Post versendet markiert');
+    await fetchCases();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
 async function previewAmtEmail() {

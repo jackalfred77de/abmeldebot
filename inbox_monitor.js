@@ -4,7 +4,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 
 const axios = require('axios');
-const { getGraphToken } = require('./email');
+const { getGraphToken, sendBestaetigung } = require('./email');
 const SP = require('./sharepoint');
 const { BEZIRK_EMAILS } = require('./bezirk_emails');
 
@@ -295,18 +295,8 @@ async function checkInbox(telegramBot) {
         }
       }
 
-      // Notify client via Telegram if we have their chatId
-      if (telegramBot && caseData.ChatId) {
-        const lang = caseData.Language || 'de';
-        const msgs = {
-          de: `✅ Ihre Abmeldebestätigung (${orderId}) ist eingegangen! Wir leiten Ihnen das Dokument in Kürze weiter.`,
-          pt: `✅ Sua confirmação de Abmeldung (${orderId}) chegou! Enviaremos o documento em breve.`,
-          en: `✅ Your Abmeldung confirmation (${orderId}) has been received! We'll forward the document to you shortly.`,
-        };
-        try {
-          await telegramBot.telegram.sendMessage(caseData.ChatId, msgs[lang] || msgs.de);
-        } catch (_) {}
-      }
+      // Process delivery (auto-send email or notify about postal pending)
+      await processDelivery(caseData, orderId, telegramBot);
 
     } else {
       // No match — notify admin but do NOT mark as read
@@ -327,6 +317,110 @@ async function checkInbox(telegramBot) {
 
   console.log(`📬 Inbox check: ${messages.length} unread, ${fromBuergeramt} from Bürgeramt, ${matched} matched`);
   return { total: messages.length, fromBuergeramt, matched };
+}
+
+// ── processDelivery ────────────────────────────────────────────────────────
+// Decides how to deliver the Abmeldebestätigung: email auto or postal pending
+// Called after confirmation_received status is set
+// ───────────────────────────────────────────────────────────────────────────
+
+async function processDelivery(caseData, orderId, telegramBot) {
+  const lang = (caseData.Language || 'de').toLowerCase();
+  const deliveryMethod = (caseData.DeliveryMethod || 'email').toLowerCase();
+  const clientName = caseData.ClientName || orderId;
+  const chatId = caseData.ChatId;
+
+  if (deliveryMethod === 'post') {
+    // Postal delivery: update status, notify admin + client
+    try {
+      await SP.updateCaseStatus(orderId, 'delivery_post_pending',
+        'Abmeldebestätigung erhalten. Postversand ausstehend an: ' + (caseData.PostalAddress || '–'));
+    } catch (e) {
+      console.error('⚠️ processDelivery SP update error:', e.message);
+    }
+
+    // Notify admin
+    if (telegramBot && ADMIN_CHAT_ID) {
+      try {
+        await telegramBot.telegram.sendMessage(ADMIN_CHAT_ID,
+          `📮 ${clientName} (${orderId}) — Abmeldebestätigung erhalten. Postversand ausstehend an: ${caseData.PostalAddress || '–'}`);
+      } catch (_) {}
+    }
+
+    // Notify client
+    if (telegramBot && chatId) {
+      const msgs = {
+        de: '📩 Ihre Abmeldebestätigung ist eingegangen! Wir senden sie Ihnen per Post zu.',
+        pt: '📩 A sua Abmeldebestätigung foi recebida! Enviaremos por correio para o seu endereço.',
+        en: '📩 Your Abmeldebestätigung has been received! We will send it to you by post.',
+      };
+      try {
+        await telegramBot.telegram.sendMessage(chatId, msgs[lang] || msgs.de);
+      } catch (_) {}
+    }
+
+  } else {
+    // Email delivery: auto-send, update status, notify
+    // Refresh case data to pick up the AbmeldebestaetigungUrl
+    let freshCase = caseData;
+    try { freshCase = await SP.getCase(orderId) || caseData; } catch (_) {}
+
+    const emailResult = await sendBestaetigung(freshCase);
+
+    if (emailResult.success) {
+      const now = new Date().toLocaleDateString('de-DE');
+      try {
+        await SP.updateCaseStatus(orderId, 'delivery_email_sent',
+          'Abmeldebestätigung per Email an ' + (freshCase.Email || '–') + ' gesendet am ' + now);
+        // Immediately mark as completed
+        await SP.updateCaseStatus(orderId, 'completed',
+          'Fall abgeschlossen — Bestätigung per Email zugestellt');
+      } catch (e) {
+        console.error('⚠️ processDelivery SP status update error:', e.message);
+      }
+
+      // Notify client via Telegram
+      if (telegramBot && chatId) {
+        const msgs = {
+          de: '📋 Ihre Abmeldebestätigung wurde per Email gesendet. Bitte prüfen Sie Ihr Postfach.',
+          pt: '📋 A sua Abmeldebestätigung foi enviada por email. Verifique a sua caixa de entrada.',
+          en: '📋 Your Abmeldebestätigung has been sent by email. Please check your inbox.',
+        };
+        try {
+          await telegramBot.telegram.sendMessage(chatId, msgs[lang] || msgs.de);
+        } catch (_) {}
+      }
+
+      // Notify admin
+      if (telegramBot && ADMIN_CHAT_ID) {
+        try {
+          await telegramBot.telegram.sendMessage(ADMIN_CHAT_ID,
+            `✅ ${clientName} (${orderId}) — Abmeldebestätigung per Email gesendet. Fall abgeschlossen.`);
+        } catch (_) {}
+      }
+    } else {
+      // Email failed — notify admin, leave at confirmation_received
+      console.error('❌ processDelivery email failed for ' + orderId + ':', emailResult.error);
+      if (telegramBot && ADMIN_CHAT_ID) {
+        try {
+          await telegramBot.telegram.sendMessage(ADMIN_CHAT_ID,
+            `⚠️ ${clientName} (${orderId}) — Bestätigung-Email fehlgeschlagen: ${emailResult.error}\nBitte manuell über Dashboard senden.`);
+        } catch (_) {}
+      }
+
+      // Still notify client that it was received
+      if (telegramBot && chatId) {
+        const msgs = {
+          de: '✅ Ihre Abmeldebestätigung (' + orderId + ') ist eingegangen! Wir leiten Ihnen das Dokument in Kürze weiter.',
+          pt: '✅ Sua confirmação de Abmeldung (' + orderId + ') chegou! Enviaremos o documento em breve.',
+          en: '✅ Your Abmeldung confirmation (' + orderId + ') has been received! We\'ll forward the document to you shortly.',
+        };
+        try {
+          await telegramBot.telegram.sendMessage(chatId, msgs[lang] || msgs.de);
+        } catch (_) {}
+      }
+    }
+  }
 }
 
 // ── Start/stop polling ─────────────────────────────────────────────────────
@@ -375,6 +469,7 @@ module.exports = {
   startInboxMonitor,
   stopInboxMonitor,
   checkInbox,
+  processDelivery,
   // Export for testing/dashboard
   getCasesByStatus,
   getCasesByStatusAndBezirk,

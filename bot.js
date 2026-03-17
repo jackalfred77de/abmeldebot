@@ -191,6 +191,25 @@ bot.command('case', async (ctx) => {
   } catch(e) { await ctx.reply('\u274c Fehler: ' + e.message); }
 });
 
+// ─── /upload {orderId} — Admin: upload Abmeldebestätigung via Telegram ───
+bot.command('upload', async (ctx) => {
+  if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) return;
+  const orderId = (ctx.message.text || '').split(/\s+/)[1];
+  if (!orderId) { await ctx.reply('Verwendung: /upload ORDERID\nBeispiel: /upload ABM-2026-42'); return; }
+  try {
+    const c = await SP.getCase(orderId);
+    if (!c) { await ctx.reply(`\u274c Fall ${orderId} nicht gefunden`); return; }
+    const session = getSession(ctx.chat.id);
+    session._uploadOrderId = orderId;
+    session.step = 'admin_upload_bestaetigung';
+    await ctx.reply(
+      `\ud83d\udcce Abmeldebestätigung für *${orderId}* (${c.ClientName})\n\n` +
+      `Bitte senden Sie das Dokument als *PDF* oder *Foto*.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (e) { await ctx.reply('\u274c Fehler: ' + e.message); }
+});
+
 // [TEST] Comando para testes rápidos
 // /test       → DIY, sigMode self, vai direto ao resumo
 // /test sig   → Full, sigMode paste, pede foto da assinatura
@@ -705,6 +724,19 @@ bot.on('photo', async (ctx) => {
     case 'family_doc_front': { const members = session.data.familyMembers || []; const idx = members.length - 1; if (idx >= 0 && typeof members[idx] === 'object') { members[idx].docFrontFileId = photo.file_id; members[idx].docFrontImage = base64Image; } await ctx.reply(t(session, 'family_doc_received')); if (idx >= 0 && typeof members[idx] === 'object' && members[idx].docType === 'id') { session.step = 'family_doc_back'; await ctx.reply(t(session, 'ask_family_doc_back').replace('{n}', idx + 1)); } else { await finishFamilyMember(ctx, session); } break; }
     case 'family_doc_back': { const members2 = session.data.familyMembers || []; const idx2 = members2.length - 1; if (idx2 >= 0 && typeof members2[idx2] === 'object') { members2[idx2].docBackFileId = photo.file_id; members2[idx2].docBackImage = base64Image; } await ctx.reply(t(session, 'family_doc_received')); await finishFamilyMember(ctx, session); break; }
     case 'vollmacht_return': { session.data.signedVollmachtImage = base64Image; session.data.signedVollmachtFileId = photo.file_id; await ctx.reply(t(session, 'vollmacht_return_received')); await completeAfterVollmacht(ctx, session); break; }
+    case 'admin_upload_bestaetigung': {
+      if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) break;
+      const uploadOrderId = session._uploadOrderId;
+      if (!uploadOrderId) { await ctx.reply('\u274c Kein Fall ausgewählt. Bitte /upload ORDERID erneut senden.'); break; }
+      try {
+        const spUrl = await SP.uploadTelegramPhoto(uploadOrderId, photo.file_id, `Abmeldebestaetigung_${uploadOrderId}.jpg`, bot);
+        await SP.updateCaseStatus(uploadOrderId, 'confirmation_received', `Abmeldebest\u00e4tigung manuell hochgeladen am ${new Date().toLocaleDateString('de-DE')} via Telegram`);
+        if (spUrl) await SP.updateCaseField(uploadOrderId, { AbmeldebestaetigungUrl: spUrl });
+        await ctx.reply(`\u2705 Abmeldebest\u00e4tigung f\u00fcr ${uploadOrderId} hochgeladen`);
+      } catch (e) { await ctx.reply('\u274c Fehler: ' + e.message); }
+      session.step = null; delete session._uploadOrderId;
+      break;
+    }
   }
 });
 
@@ -742,6 +774,26 @@ bot.on('document', async (ctx) => {
     case 'family_doc_back': { const members2 = session.data.familyMembers || []; const idx2 = members2.length - 1; if (idx2 >= 0 && typeof members2[idx2] === 'object') { members2[idx2].docBackFileId = doc.file_id; members2[idx2].docBackImage = base64Image; } await ctx.reply(t(session, 'family_doc_received')); await finishFamilyMember(ctx, session); break; }
     case 'vollmacht': session.data.vollmachtFileId = doc.file_id; await ctx.reply('✅ Vollmacht recebida!'); session.ctx = ctx; await triggerPowerAutomate(session); await ctx.reply(t(session, 'done_message')); session.step = 'done'; break;
     case 'vollmacht_return': { session.data.signedVollmachtFileId = doc.file_id; if (base64Image) session.data.signedVollmachtImage = base64Image; await ctx.reply(t(session, 'vollmacht_return_received')); await completeAfterVollmacht(ctx, session); break; }
+    case 'admin_upload_bestaetigung': {
+      if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) break;
+      const uploadOrderId = session._uploadOrderId;
+      if (!uploadOrderId) { await ctx.reply('\u274c Kein Fall ausgewählt. Bitte /upload ORDERID erneut senden.'); break; }
+      try {
+        // For PDFs, download and upload directly (not the converted image)
+        const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+        const fileResp = await axios.get(fileLink.href, { responseType: 'arraybuffer', timeout: 30000 });
+        const tmpPath = path.join(BOT_DIR, 'pdfs', `bestaetigung_tmp_${uploadOrderId}${isPdf ? '.pdf' : '.jpg'}`);
+        fs.writeFileSync(tmpPath, Buffer.from(fileResp.data));
+        const filename = isPdf ? `Abmeldebestaetigung_${uploadOrderId}.pdf` : `Abmeldebestaetigung_${uploadOrderId}.jpg`;
+        const spUrl = await SP.uploadFile(uploadOrderId, tmpPath, filename);
+        try { fs.unlinkSync(tmpPath); } catch(_) {}
+        await SP.updateCaseStatus(uploadOrderId, 'confirmation_received', `Abmeldebestätigung manuell hochgeladen am ${new Date().toLocaleDateString('de-DE')} via Telegram`);
+        if (spUrl) await SP.updateCaseField(uploadOrderId, { AbmeldebestaetigungUrl: spUrl });
+        await ctx.reply(`\u2705 Abmeldebestätigung für ${uploadOrderId} hochgeladen`);
+      } catch (e) { await ctx.reply('\u274c Fehler: ' + e.message); }
+      session.step = null; delete session._uploadOrderId;
+      break;
+    }
   }
 });
 

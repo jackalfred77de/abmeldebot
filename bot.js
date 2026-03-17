@@ -892,7 +892,8 @@ async function startBot() {
 
   // Start inbox monitor (polls for Bürgeramt responses)
   try { startInboxMonitor(bot); } catch(e) { console.error('⚠️ InboxMonitor start error (non-fatal):', e.message); }
-  try { await bot.telegram.deleteWebhook({ drop_pending_updates: true }); console.log('🧹 Webhook limpo'); } catch(e) {}
+  try { await bot.telegram.deleteWebhook({ drop_pending_updates: true }); console.log('🧹 Webhook limpo'); } catch(e) { console.error('Webhook err:', e.message); }
+  console.log('🚀 Calling bot.launch()...');
   try {
     await bot.launch({ dropPendingUpdates: true, allowedUpdates: ['message', 'callback_query'] });
     console.log('✅ AbmeldeBot gestartet!'); console.log('📱 Jetzt in Telegram: /start');

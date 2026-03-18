@@ -109,8 +109,9 @@ app.patch('/api/cases/:orderId/status', authMiddleware, async (req, res) => {
     if (!itemId) return res.status(404).json({ error: 'Case not found' });
     res.json({ ok: true, itemId });
   } catch (err) {
-    console.error('API PATCH status error:', err.message);
-    res.status(500).json({ error: err.message });
+    const detail = err.response ? JSON.stringify(err.response.data).substring(0, 500) : '';
+    console.error('API PATCH status error:', err.message, detail);
+    res.status(500).json({ error: err.message, detail });
   }
 });
 

@@ -79,13 +79,38 @@ async function sendAbmeldungEmail(toEmail, pdfPath, session, buildIdPdf) {
       console.error('⚠️ ID PDF build error:', e.message);
     }
   }
-  const stepsHtml = isDiy
-    ? '<p><strong>N\u00e4chste Schritte (DIY):</strong><br/>1. Formular ausdrucken<br/>2. Unterschreiben<br/>3. Ans B\u00fcrgeramt senden</p>'
-    : '<p>Wir k\u00fcmmern uns um die Einreichung beim B\u00fcrgeramt.</p>';
-  const htmlBody = '<p>Sehr geehrte/r ' + firstName + ' ' + lastName + ',</p>' +
-    '<p>im Anhang finden Sie Ihr ausgef\u00fclltes Abmeldeformular (Aktenzeichen: <strong>' + orderId + '</strong>).</p>' +
-    stepsHtml +
-    '<p>Mit freundlichen Gr\u00fc\u00dfen</p>' +
+  const lang = (session.lang || 'de').toLowerCase();
+  const stepsMap = {
+    de: isDiy
+      ? '<p><strong>N\u00e4chste Schritte (DIY):</strong><br/>1. Formular ausdrucken<br/>2. Unterschreiben<br/>3. Ans B\u00fcrgeramt senden</p>'
+      : '<p>Wir k\u00fcmmern uns um die Einreichung beim B\u00fcrgeramt.</p>',
+    pt: isDiy
+      ? '<p><strong>Pr\u00f3ximos passos (DIY):</strong><br/>1. Imprimir o formul\u00e1rio<br/>2. Assinar<br/>3. Enviar ao B\u00fcrgeramt</p>'
+      : '<p>N\u00f3s cuidaremos do envio ao B\u00fcrgeramt.</p>',
+    en: isDiy
+      ? '<p><strong>Next steps (DIY):</strong><br/>1. Print the form<br/>2. Sign it<br/>3. Send it to the B\u00fcrgeramt</p>'
+      : '<p>We will take care of submitting it to the B\u00fcrgeramt.</p>',
+  };
+  const bodyMap = {
+    de: '<p>Sehr geehrte/r ' + firstName + ' ' + lastName + ',</p>' +
+      '<p>im Anhang finden Sie Ihr ausgef\u00fclltes Abmeldeformular (Aktenzeichen: <strong>' + orderId + '</strong>).</p>' +
+      (stepsMap.de) +
+      '<p>Mit freundlichen Gr\u00fc\u00dfen</p>',
+    pt: '<p>Prezado(a) Sr(a). ' + firstName + ' ' + lastName + ',</p>' +
+      '<p>em anexo encontra o seu formul\u00e1rio de Abmeldung preenchido (refer\u00eancia: <strong>' + orderId + '</strong>).</p>' +
+      (stepsMap.pt) +
+      '<p>Atenciosamente</p>',
+    en: '<p>Dear ' + firstName + ' ' + lastName + ',</p>' +
+      '<p>please find attached your completed Abmeldung form (reference: <strong>' + orderId + '</strong>).</p>' +
+      (stepsMap.en) +
+      '<p>Kind regards</p>',
+  };
+  const subjectMap = {
+    de: 'Ihre Abmeldung - Aktenzeichen ' + orderId,
+    pt: 'Sua Abmeldung - Ref. ' + orderId,
+    en: 'Your Abmeldung - Ref. ' + orderId,
+  };
+  const htmlBody = (bodyMap[lang] || bodyMap.de) +
     '<table cellpadding="0" cellspacing="0" border="0" style="border-top:2px solid #000;padding-top:16px;margin-top:24px;font-family:Helvetica,Arial,sans-serif;">' +
     '<tr><td style="padding-bottom:12px;">' +
     '<strong style="font-size:15px;letter-spacing:0.04em;text-transform:uppercase;">FREDERICO E. REICHEL</strong><br/>' +
@@ -109,7 +134,7 @@ async function sendAbmeldungEmail(toEmail, pdfPath, session, buildIdPdf) {
       'https://graph.microsoft.com/v1.0/users/' + GRAPH_SENDER + '/sendMail',
       {
         message: {
-          subject: 'Ihre Abmeldung - Aktenzeichen ' + orderId,
+          subject: subjectMap[lang] || subjectMap.de,
           body: { contentType: 'HTML', content: htmlBody },
           toRecipients: [{ emailAddress: { address: toEmail } }],
           replyTo: [{ emailAddress: { address: FIRM_EMAIL } }],

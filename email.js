@@ -368,7 +368,7 @@ async function sendBestaetigung(caseData) {
         '<p>em anexo encontra a sua <strong>confirmação de cancelamento de residência</strong> (Abmeldebestätigung, referência: <strong>' + orderId + '</strong>).</p>' +
         '<p>Por favor, guarde este documento com cuidado. Ele serve como comprovativo do seu cancelamento de residência em Berlim.</p>' +
         '<p>Se tiver alguma dúvida, estamos à sua disposição.</p>' +
-        '<p>Com os melhores cumprimentos</p>',
+        '<p>Atenciosamente</p>',
     en: '<p>Dear ' + firstName + ' ' + lastName + ',</p>' +
         '<p>please find attached your <strong>deregistration confirmation</strong> (Abmeldebestätigung, reference: <strong>' + orderId + '</strong>).</p>' +
         '<p>Please keep this document in a safe place. It serves as proof of your deregistration from Berlin.</p>' +

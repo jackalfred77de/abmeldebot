@@ -313,6 +313,32 @@ app.post('/api/cases/:orderId/mark-posted', authMiddleware, async (req, res) => 
   }
 });
 
+// ── Send follow-up email to Bürgeramt ───────────────────────────────────
+app.post('/api/cases/:orderId/send-followup', authMiddleware, async (req, res) => {
+  try {
+    const { sendFollowUp } = require('./email');
+    const caseData = await SP.getCase(req.params.orderId);
+    if (!caseData) return res.status(404).json({ error: 'Case not found' });
+    const result = await sendFollowUp(caseData);
+    if (!result.success) return res.status(500).json(result);
+    const now = new Date().toLocaleDateString('de-DE');
+    await SP.updateCaseStatus(req.params.orderId, 'sent_to_amt',
+      'Nachfass-Email an Bürgeramt ' + (result.bezirk || '') + ' gesendet am ' + now + ' (' + (result.to || '') + ') via Dashboard');
+    const tgBot = req.app.get('telegramBot');
+    const adminId = process.env.ADMIN_CHAT_ID;
+    if (tgBot && adminId) {
+      try {
+        await tgBot.telegram.sendMessage(adminId,
+          '📧 Nachfass-Email gesendet\n👤 ' + (caseData.ClientName || req.params.orderId) + '\n🏛 ' + (result.bezirk || '?') + '\n📮 ' + (result.to || ''));
+      } catch (_) {}
+    }
+    res.json({ ok: true, to: result.to, bezirk: result.bezirk });
+  } catch (err) {
+    console.error('API send-followup error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Health check ────────────────────────────────────────────────────────────
 // ── DSGVO: Delete case (list item + folder) ─────────────────────────────────
 app.delete('/api/cases/:orderId', authMiddleware, async (req, res) => {

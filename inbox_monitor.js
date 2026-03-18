@@ -423,6 +423,107 @@ async function processDelivery(caseData, orderId, telegramBot) {
   }
 }
 
+// ── Overdue check ──────────────────────────────────────────────────────────
+// Flag cases sent_to_amt > 14 days without response
+// ───────────────────────────────────────────────────────────────────────────
+
+async function checkOverdue(telegramBot) {
+  try {
+    const sentCases = await getCasesByStatus('sent_to_amt');
+    const now = Date.now();
+    let overdueCount = 0;
+
+    for (const c of sentCases) {
+      // Find the sent_to_amt timestamp from Timeline
+      let sentDate = null;
+      try {
+        const tl = JSON.parse(c.Timeline || '[]');
+        const entry = tl.find(t => t.status === 'sent_to_amt');
+        if (entry && entry.ts) sentDate = new Date(entry.ts);
+      } catch (_) {}
+      if (!sentDate) continue;
+
+      const daysWaiting = Math.floor((now - sentDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (daysWaiting > 14) {
+        overdueCount++;
+        const orderId = c.Title;
+        const clientName = c.ClientName || orderId;
+        const bezirk = c.Bezirk || '?';
+
+        // Update status → confirmation_overdue
+        try {
+          await SP.updateCaseStatus(orderId, 'confirmation_overdue',
+            `⚠️ Keine Antwort vom Bürgeramt seit ${daysWaiting} Tagen`);
+        } catch (e) {
+          console.error(`⚠️ Overdue status update error for ${orderId}:`, e.message);
+        }
+
+        // Notify admin via Telegram with follow-up button
+        if (telegramBot && ADMIN_CHAT_ID) {
+          try {
+            await telegramBot.telegram.sendMessage(ADMIN_CHAT_ID,
+              `⚠️ *Überfällig:* ${clientName} (${orderId})\n` +
+              `🏛 ${bezirk} — keine Antwort seit ${daysWaiting} Tagen.\n` +
+              `Nachfassen?`,
+              {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                  inline_keyboard: [
+                    [{ text: '📧 Nachfass-Email senden', callback_data: `admin_followup_${orderId}` }],
+                    [{ text: '📋 Fall anzeigen', callback_data: `admin_showcase_${orderId}` }],
+                  ]
+                }
+              }
+            );
+          } catch (tgErr) {
+            console.error('⚠️ Overdue TG notify error:', tgErr.message);
+          }
+        }
+      } else if (daysWaiting > 7) {
+        console.log(`⏳ ${c.Title}: ${daysWaiting} Tage seit Einreichung (noch nicht überfällig)`);
+      }
+    }
+
+    // Also check cases already marked overdue — re-notify if still no response every 7 days
+    const overdueCases = await getCasesByStatus('confirmation_overdue');
+    for (const c of overdueCases) {
+      let overdueDate = null;
+      try {
+        const tl = JSON.parse(c.Timeline || '[]');
+        const entry = [...tl].reverse().find(t => t.status === 'confirmation_overdue');
+        if (entry && entry.ts) overdueDate = new Date(entry.ts);
+      } catch (_) {}
+      if (!overdueDate) continue;
+      const daysSinceOverdue = Math.floor((now - overdueDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysSinceOverdue > 0 && daysSinceOverdue % 7 === 0) {
+        console.log(`🔔 Re-notify: ${c.Title} still overdue after ${daysSinceOverdue} days`);
+        if (telegramBot && ADMIN_CHAT_ID) {
+          try {
+            await telegramBot.telegram.sendMessage(ADMIN_CHAT_ID,
+              `🔔 *Erinnerung:* ${c.ClientName || c.Title} (${c.Title}) — noch keine Antwort vom Bürgeramt ${c.Bezirk || '?'}.`,
+              {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                  inline_keyboard: [
+                    [{ text: '📧 Nachfass-Email senden', callback_data: `admin_followup_${c.Title}` }],
+                  ]
+                }
+              }
+            );
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (overdueCount > 0) console.log(`⚠️ Overdue check: ${overdueCount} neue überfällige Fälle`);
+    return overdueCount;
+  } catch (e) {
+    console.error('⚠️ checkOverdue error:', e.message);
+    return 0;
+  }
+}
+
 // ── Start/stop polling ─────────────────────────────────────────────────────
 
 let _interval = null;
@@ -452,6 +553,12 @@ function startInboxMonitor(telegramBot) {
       console.error('📬 InboxMonitor poll error:', e.message);
       // Don't stop — log and continue
     }
+    // Check overdue cases after each inbox poll
+    try {
+      await checkOverdue(telegramBot);
+    } catch (e) {
+      console.error('📬 Overdue check error:', e.message);
+    }
   }, POLL_INTERVAL);
 
   return _interval;
@@ -469,6 +576,7 @@ module.exports = {
   startInboxMonitor,
   stopInboxMonitor,
   checkInbox,
+  checkOverdue,
   processDelivery,
   // Export for testing/dashboard
   getCasesByStatus,

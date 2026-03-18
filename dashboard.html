@@ -571,6 +571,10 @@ tbody td {
         <div class="label" style="color:#065f46">📩 Bestätigung</div>
         <div class="value" style="color:#065f46" id="cntConfirmation">–</div>
       </div>
+      <div class="counter-card" style="cursor:pointer" onclick="document.getElementById('filterStatus').value='confirmation_overdue';applyFilters()">
+        <div class="label" style="color:#c62828">⚠️ Überfällig</div>
+        <div class="value" style="color:#c62828" id="cntOverdue">–</div>
+      </div>
       <div class="counter-card" style="cursor:pointer" onclick="document.getElementById('filterStatus').value='delivery_post_pending';applyFilters()">
         <div class="label" style="color:#e65100">📮 Post ausstehend</div>
         <div class="value" style="color:#e65100" id="cntPostPending">–</div>
@@ -598,6 +602,7 @@ tbody td {
         <option value="completed">Completed</option>
         <option value="rejected">Rejected</option>
         <option value="on_hold">On Hold</option>
+        <option value="confirmation_overdue">⚠️ Überfällig</option>
         <option value="cancelled">Cancelled</option>
       </select>
       <select id="filterBezirk" onchange="applyFilters()">
@@ -695,7 +700,7 @@ function statusLabel(s) {
     pending_review: 'Pending Review', submitted_to_behoerde: 'Submitted', sent_to_amt: 'Sent to Amt',
     confirmation_received: 'Bestätigung erhalten', delivery_email_sent: 'Email zugestellt',
     delivery_post_pending: 'Post ausstehend', delivery_post_sent: 'Post versendet', completed: 'Completed',
-    rejected: 'Rejected', on_hold: 'On Hold', cancelled: 'Cancelled'
+    rejected: 'Rejected', on_hold: 'On Hold', cancelled: 'Cancelled', confirmation_overdue: '⚠️ Überfällig'
   };
   return map[s] || s || '–';
 }
@@ -803,6 +808,7 @@ function updateCounters() {
   $('cntAwaitingAmt').textContent = allCases.filter(c => c.Status === 'sent_to_amt').length;
   $('cntConfirmation').textContent = allCases.filter(c => c.Status === 'confirmation_received').length;
   $('cntPostPending').textContent = allCases.filter(c => c.Status === 'delivery_post_pending').length;
+  $('cntOverdue').textContent = allCases.filter(c => c.Status === 'confirmation_overdue').length;
   $('cntCompleted').textContent = allCases.filter(c => c.Status === 'completed' || c.Status === 'delivery_email_sent' || c.Status === 'delivery_post_sent').length;
 }
 
@@ -987,6 +993,7 @@ function renderSidebar(c) {
       <button class="btn-action btn-submit" onclick="updateStatus('submitted_to_behoerde')" ${isFinal ? 'disabled' : ''}>📤 Einreichen</button>
       ${(c.Service === 'full' && c.Status === 'submitted_to_behoerde') ? '<button class="btn-action" style="background:#0369a1;color:#fff;" onclick="previewAmtEmail()">📬 An Bürgeramt senden</button>' : ''}
       ${(c.Status === 'sent_to_amt') ? '<button class="btn-action" style="background:#065f46;color:#fff;" onclick="triggerUploadBestaetigung()">📎 Bestätigung hochladen</button>' : ''}
+      ${(c.Status === 'confirmation_overdue' || c.Status === 'sent_to_amt') ? '<button class="btn-action" style="background:#c62828;color:#fff;" onclick="sendFollowUp()">📧 Nachfass-Email senden</button>' : ''}
       ${(c.Status === 'confirmation_received') ? '<button class="btn-action" style="background:#065f46;color:#fff;" onclick="sendBestaetigung()">📧 Per Email senden</button>' : ''}
       ${(c.Status === 'confirmation_received' || c.Status === 'delivery_post_pending') ? '<button class="btn-action" style="background:#e65100;color:#fff;" onclick="markAsPosted()">📮 Per Post versendet</button>' : ''}
       <button class="btn-action btn-approve" onclick="updateStatus('completed')" ${isFinal ? 'disabled' : ''}>✓ Abschließen</button>
@@ -1063,7 +1070,7 @@ if (TOKEN) {
 
 // ── DAYS WAITING BADGE ──
 function getDaysWaitingBadge(c) {
-  if (c.Status !== 'sent_to_amt') return '';
+  if (c.Status !== 'sent_to_amt' && c.Status !== 'confirmation_overdue') return '';
   // Find the sent_to_amt timeline entry
   let sentDate = null;
   try {
@@ -1128,6 +1135,18 @@ async function sendBestaetigung() {
   }
 }
 
+async function sendFollowUp() {
+  if (!selectedOrderId) return;
+  const confirmed = confirm('Nachfass-Email an das Bürgeramt senden?');
+  if (!confirmed) return;
+  try {
+    const data = await apiCall('POST', '/api/cases/' + selectedOrderId + '/send-followup');
+    showToast('📧 Nachfass-Email gesendet an ' + (data.bezirk || 'Bürgeramt') + ' (' + (data.to || '') + ')');
+    await fetchCases();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
 async function markAsPosted() {
   if (!selectedOrderId) return;
   const trackingCode = prompt('Sendungsverfolgungsnummer (optional):');

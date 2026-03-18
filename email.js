@@ -460,4 +460,107 @@ async function sendBestaetigung(caseData) {
   }
 }
 
-module.exports = { getGraphToken, sendAbmeldungEmail, sendToBuergeramt, sendBestaetigung };
+// ─── sendFollowUp ──────────────────────────────────────────────────────────
+// Sends a follow-up email to the Bürgeramt for overdue cases
+// ───────────────────────────────────────────────────────────────────────────
+
+async function sendFollowUp(caseData) {
+  const bezirk = caseData.Bezirk || '';
+  const amtEmail = getBezirkEmail(bezirk);
+  if (!amtEmail) {
+    return { success: false, error: 'Kein Bürgeramt-Email für Bezirk "' + bezirk + '" gefunden' };
+  }
+
+  const orderId    = caseData.Title || '';
+  const clientName = caseData.ClientName || '';
+  const nameParts  = clientName.split(' ');
+  const firstName  = nameParts[0] || '';
+  const lastName   = nameParts.slice(1).join(' ') || '';
+  const gender     = caseData.Gender || '';
+
+  // Gender-aware language
+  const isFemale   = gender === 'weiblich';
+  const isDivers   = gender === 'divers';
+  const mandanten  = isDivers ? 'Mandant*in' : (isFemale ? 'Mandantin' : 'Mandanten');
+  const meines     = isDivers ? 'meines/meiner' : (isFemale ? 'meiner' : 'meines');
+
+  // Find original submission date from Timeline
+  let originalDate = '';
+  try {
+    const tl = JSON.parse(caseData.Timeline || '[]');
+    const sentEntry = tl.find(t => t.status === 'sent_to_amt');
+    if (sentEntry && sentEntry.ts) {
+      originalDate = new Date(sentEntry.ts).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+  } catch (_) {}
+  if (!originalDate) originalDate = '(Datum unbekannt)';
+
+  const subject = 'Nachfrage — Abmeldung ' + lastName + ', ' + firstName + ' — Vollmacht RA Reichel';
+
+  const htmlBody = '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
+    'Rechtsanwalt Frederico E. Reichel — RAFER<br/>' +
+    'Katzbachstraße 18<br/>10965 Berlin</p>' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
+    'Bezirksamt ' + bezirk + ' von Berlin<br/>' +
+    'Abt. Bürgeramt<br/>' +
+    '— per E-Mail —</p>' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
+    '<strong>Betreff: Nachfrage — Abmeldung ' + firstName + ' ' + lastName + '</strong><br/>' +
+    '<strong>Az.: ' + orderId + '</strong></p>' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">Sehr geehrte Damen und Herren,</p>' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
+    'bezugnehmend auf mein Schreiben vom ' + originalDate + ' erlaube ich mir, ' +
+    'höflich nach dem Stand der Bearbeitung der Abmeldung ' + meines + ' ' + mandanten + ', ' +
+    firstName + ' ' + lastName + ', zu fragen.</p>' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">' +
+    'Für Rückfragen stehe ich Ihnen gerne zur Verfügung.</p>' +
+    '<p style="font-family:Helvetica,Arial,sans-serif;font-size:11.5px;color:#222;">Mit freundlichen Grüßen</p>' +
+    '<table cellpadding="0" cellspacing="0" border="0" style="border-top:2px solid #000;padding-top:16px;margin-top:24px;font-family:Helvetica,Arial,sans-serif;">' +
+    '<tr><td style="padding-bottom:12px;">' +
+    '<strong style="font-size:15px;letter-spacing:0.04em;text-transform:uppercase;">FREDERICO E. REICHEL</strong><br/>' +
+    '<span style="font-size:12px;letter-spacing:0.06em;text-transform:uppercase;">Rechtsanwalt</span>' +
+    '</td></tr>' +
+    '<tr><td style="border-top:1px solid #ccc;padding-top:10px;font-size:11.5px;color:#222;line-height:1.7;">' +
+    'Katzbachstraße 18 &middot; 10965 Berlin<br/>' +
+    '<span style="display:inline-block;width:28px;color:#555;font-size:10.5px;">T</span> +49 30 44312792<br/>' +
+    '<span style="display:inline-block;width:28px;color:#555;font-size:10.5px;">Fx</span> +49 30 75439509<br/>' +
+    '<span style="display:inline-block;width:28px;color:#555;font-size:10.5px;">E</span> <a href="mailto:abmeldung@rafer.de" style="color:#000;text-decoration:none;">abmeldung@rafer.de</a><br/>' +
+    '<span style="display:inline-block;width:28px;color:#555;font-size:10.5px;">W</span> <a href="https://rafer.de" style="color:#000;text-decoration:none;">rafer.de</a><br/>' +
+    '📱 WhatsApp + Telegram: +49 155 60245902' +
+    '</td></tr>' +
+    '<tr><td style="border-top:1px solid #e0e0e0;padding-top:10px;margin-top:16px;font-size:9px;color:#888;line-height:1.55;">' +
+    'Diese E-Mail und etwaige Anhänge können vertrauliche und/oder rechtlich geschützte Informationen enthalten. ' +
+    'Falls Sie nicht der angegebene Empfänger sind, benachrichtigen Sie uns bitte sofort und löschen Sie diese E-Mail.' +
+    '</td></tr></table>';
+
+  if (!GRAPH_TENANT_ID || !GRAPH_CLIENT_ID || !GRAPH_CLIENT_SECRET) {
+    console.log('Graph API nicht konfiguriert — simuliere Follow-up-Email');
+    return { success: true, simulated: true, to: amtEmail, subject, bezirk };
+  }
+
+  try {
+    const token = await getGraphToken();
+    await axios.post(
+      'https://graph.microsoft.com/v1.0/users/' + GRAPH_SENDER + '/sendMail',
+      {
+        message: {
+          subject,
+          body: { contentType: 'HTML', content: htmlBody },
+          toRecipients: [{ emailAddress: { address: amtEmail } }],
+          ccRecipients: [{ emailAddress: { address: FIRM_EMAIL } }],
+          replyTo: [{ emailAddress: { address: FIRM_EMAIL } }],
+          // No attachments for follow-up
+        },
+        saveToSentItems: true,
+      },
+      { headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, timeout: 30000 }
+    );
+    console.log('📧 Nachfass-Email gesendet an ' + amtEmail + ' (' + bezirk + ') für ' + orderId);
+    return { success: true, to: amtEmail, subject, bezirk };
+  } catch (err) {
+    console.error('❌ Nachfass-Email Fehler:', err.message);
+    return { success: false, error: err.message, to: amtEmail };
+  }
+}
+
+module.exports = { getGraphToken, sendAbmeldungEmail, sendToBuergeramt, sendBestaetigung, sendFollowUp };

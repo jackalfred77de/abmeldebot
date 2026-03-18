@@ -220,6 +220,48 @@ bot.command('upload', async (ctx) => {
   } catch (e) { await ctx.reply('\u274c Fehler: ' + e.message); }
 });
 
+// ─── /overdue — Admin: list overdue cases ────────────────────────────────
+bot.command('overdue', async (ctx) => {
+  if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) return;
+  try {
+    const { getCasesByStatus } = require('./inbox_monitor');
+    const overdueCases = await getCasesByStatus('confirmation_overdue');
+    const sentCases = await getCasesByStatus('sent_to_amt');
+    const now = Date.now();
+    const allOverdue = [...overdueCases];
+    for (const c of sentCases) {
+      let sentDate = null;
+      try { const tl = JSON.parse(c.Timeline || '[]'); const entry = tl.find(t => t.status === 'sent_to_amt'); if (entry && entry.ts) sentDate = new Date(entry.ts); } catch (_) {}
+      if (!sentDate) continue;
+      const days = Math.floor((now - sentDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (days > 14) allOverdue.push({ ...c, _daysWaiting: days });
+    }
+    if (allOverdue.length === 0) {
+      await ctx.reply('✅ Keine überfälligen Fälle.');
+      return;
+    }
+    for (const c of allOverdue) {
+      let days = c._daysWaiting;
+      if (!days) {
+        try { const tl = JSON.parse(c.Timeline || '[]'); const entry = tl.find(t => t.status === 'sent_to_amt'); if (entry && entry.ts) days = Math.floor((now - new Date(entry.ts).getTime()) / (1000*60*60*24)); } catch(_) {}
+      }
+      await ctx.reply(
+        `⚠️ *${c.ClientName || c.Title}* (${c.Title})\n🏛 ${c.Bezirk || '?'} — ${days || '?'} Tage\n🔖 Status: ${c.Status}`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📧 Nachfassen', callback_data: 'admin_followup_' + c.Title }],
+              [{ text: '📋 Fall anzeigen', callback_data: 'admin_showcase_' + c.Title }],
+            ]
+          }
+        }
+      );
+    }
+    await ctx.reply(`📊 Gesamt: ${allOverdue.length} überfällige Fälle`);
+  } catch (e) { await ctx.reply('❌ Fehler: ' + e.message); }
+});
+
 // [TEST] Comando para testes rápidos
 // /test       → DIY, sigMode self, vai direto ao resumo
 // /test sig   → Full, sigMode paste, pede foto da assinatura
@@ -647,6 +689,47 @@ bot.action(/admin_hold_(.+)/, async (ctx) => {
     await SP.updateCaseStatus(orderId, 'on_hold', 'Admin: zurückgestellt');
     await ctx.editMessageText(`⏸ *${orderId}* zurückgestellt`, { parse_mode: 'Markdown' });
   } catch(e) { await ctx.reply('❌ Fehler: ' + e.message); }
+});
+
+
+// ─── ADMIN: Follow-up email to Bürgeramt ─────────────────────────────────
+bot.action(/admin_followup_(.+)/, async (ctx) => {
+  if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) return ctx.answerCbQuery('❌ Nicht autorisiert');
+  const orderId = ctx.match[1];
+  await ctx.answerCbQuery('📧 Nachfass-Email wird gesendet...');
+  try {
+    const caseData = await SP.getCase(orderId);
+    if (!caseData) { await ctx.reply(`❌ Fall ${orderId} nicht gefunden`); return; }
+    const { sendFollowUp } = require('./email');
+    const result = await sendFollowUp(caseData);
+    if (!result.success) {
+      await ctx.reply(`❌ Nachfass-Email fehlgeschlagen: ${result.error}`);
+      return;
+    }
+    const now = new Date().toLocaleDateString('de-DE');
+    await SP.updateCaseStatus(orderId, 'sent_to_amt',
+      `Nachfass-Email an Bürgeramt ${result.bezirk || ''} gesendet am ${now} (${result.to || ''})`);
+    await ctx.editMessageText(
+      `📧 *${orderId}* — Nachfass-Email an ${result.bezirk || 'Bürgeramt'} gesendet (${result.to})`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (e) { await ctx.reply('❌ Fehler: ' + e.message); }
+});
+
+// ─── ADMIN: Show case from overdue alert ──────────────────────────────
+bot.action(/admin_showcase_(.+)/, async (ctx) => {
+  if (String(ctx.chat.id) !== String(ADMIN_CHAT_ID)) return ctx.answerCbQuery('❌');
+  const orderId = ctx.match[1];
+  await ctx.answerCbQuery();
+  try {
+    const c = await SP.getCase(orderId);
+    if (!c) { await ctx.reply(`❌ Fall ${orderId} nicht gefunden`); return; }
+    const detail = `📋 *Fall ${c.Title}*\n\n` +
+      `👤 ${c.ClientName}\n📧 ${c.Email}\n` +
+      `🏛 ${c.Bezirk}\n📆 Auszug: ${c.MoveOutDate}\n` +
+      `🔖 Status: *${c.Status}*`;
+    await ctx.reply(detail, { parse_mode: 'Markdown' });
+  } catch (e) { await ctx.reply('❌ Fehler: ' + e.message); }
 });
 
 // ─── TEXT HANDLER ────────────────────────────────────────────────────────

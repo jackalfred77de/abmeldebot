@@ -659,7 +659,7 @@ bot.on('text', async (ctx) => {
   // Check if this is an admin rejection reason
   if (String(ctx.chat.id) === String(ADMIN_CHAT_ID)) {
     for (const [key, val] of sessions.entries()) {
-      if (key.startsWith('_admin_reject_') && val.step === 'awaiting_reason') {
+      if (typeof key === 'string' && key.startsWith('_admin_reject_') && val.step === 'awaiting_reason') {
         const orderId = val.orderId;
         const reason = text;
         sessions.delete(key);

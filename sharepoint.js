@@ -204,7 +204,7 @@ async function updateCaseStatus(orderId, newStatus, note = '') {
   // Buscar item pelo orderId
   const search = await axios.get(
     `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$filter=fields/Title eq '${orderId}'&$expand=fields`,
-    { headers: headers(token), timeout: 15000 }
+    { headers: { ...headers(token), 'Prefer': 'HonorNonIndexedQueriesWarningMayFailRandomly' }, timeout: 15000 }
   );
   const items = search.data.value;
   if (!items || items.length === 0) {
@@ -344,7 +344,7 @@ async function listCases(filter = '') {
 
   const allItems = [];
   while (url) {
-    const resp = await axios.get(url, { headers: headers(token), timeout: 30000 });
+    const resp = await axios.get(url, { headers: { ...headers(token), 'Prefer': 'HonorNonIndexedQueriesWarningMayFailRandomly' }, timeout: 30000 });
     const items = (resp.data.value || []).map(item => ({
       id: item.id,
       ...item.fields,
@@ -362,7 +362,7 @@ async function getCase(orderId) {
   const token = await getToken();
   const resp = await axios.get(
     `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$filter=fields/Title eq '${orderId}'&$expand=fields&$top=1`,
-    { headers: headers(token), timeout: 15000 }
+    { headers: { ...headers(token), 'Prefer': 'HonorNonIndexedQueriesWarningMayFailRandomly' }, timeout: 15000 }
   );
   const items = resp.data.value;
   if (!items || items.length === 0) return null;
@@ -376,7 +376,7 @@ async function addCaseNote(orderId, note) {
 
   const search = await axios.get(
     `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$filter=fields/Title eq '${orderId}'&$expand=fields`,
-    { headers: headers(token), timeout: 15000 }
+    { headers: { ...headers(token), 'Prefer': 'HonorNonIndexedQueriesWarningMayFailRandomly' }, timeout: 15000 }
   );
   const items = search.data.value;
   if (!items || items.length === 0) return null;
@@ -408,7 +408,7 @@ async function updateCaseField(orderId, fieldsToUpdate = {}) {
   const token = await getToken();
   const search = await axios.get(
     `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$filter=fields/Title eq '${orderId}'&$expand=fields`,
-    { headers: headers(token), timeout: 15000 }
+    { headers: { ...headers(token), 'Prefer': 'HonorNonIndexedQueriesWarningMayFailRandomly' }, timeout: 15000 }
   );
   const items = search.data.value;
   if (!items || items.length === 0) throw new Error(`Case ${orderId} not found`);
@@ -433,7 +433,7 @@ async function deleteCase(orderId) {
     try {
       const search = await axios.get(
         `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$filter=fields/Title eq '${orderId}'&$expand=fields`,
-        { headers: headers(token), timeout: 15000 }
+        { headers: { ...headers(token), 'Prefer': 'HonorNonIndexedQueriesWarningMayFailRandomly' }, timeout: 15000 }
       );
       const items = search.data.value;
       if (items && items.length > 0) {

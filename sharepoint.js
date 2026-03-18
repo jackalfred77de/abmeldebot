@@ -339,7 +339,7 @@ async function listCases(filter = '') {
     return [];
   }
   const token = await getToken();
-  let url = `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$expand=fields&$top=200&$orderby=fields/CreatedAt desc`;
+  let url = `${GRAPH}/sites/${SITE_ID}/lists/${LIST_ID}/items?$expand=fields&$top=200`;
   if (filter) url += `&$filter=${filter}`;
 
   const allItems = [];

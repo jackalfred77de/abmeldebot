@@ -84,8 +84,9 @@ app.get('/api/cases', authMiddleware, async (req, res) => {
     const cases = await SP.listCases();
     res.json({ cases });
   } catch (err) {
-    console.error('API /cases error:', err.message);
-    res.status(500).json({ error: err.message });
+    const detail = err.response ? JSON.stringify(err.response.data).substring(0, 500) : '';
+    console.error('API /cases error:', err.message, detail);
+    res.status(500).json({ error: err.message, detail });
   }
 });
 

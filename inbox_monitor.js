@@ -534,14 +534,15 @@ function startInboxMonitor(telegramBot) {
     return null;
   }
 
-  console.log(`📬 InboxMonitor starting (inbox: ${INBOX_EMAIL}, interval: ${POLL_INTERVAL / 1000}s)`);
+  console.log(`📬 InboxMonitor starting (inbox: ${INBOX_EMAIL}, sender: ${process.env.GRAPH_SENDER || 'not set'}, interval: ${POLL_INTERVAL / 1000}s)`);
 
   // Initial check after 10s delay (let everything else start first)
   setTimeout(async () => {
     try {
       await checkInbox(telegramBot);
     } catch (e) {
-      console.error('📬 InboxMonitor initial check error:', e.message);
+      const errDetail = e.response ? (e.response.status + ' ' + JSON.stringify(e.response.data).substring(0, 300)) : '';
+      console.error('📬 InboxMonitor initial check error:', e.message, errDetail);
     }
   }, 10000);
 
@@ -550,7 +551,8 @@ function startInboxMonitor(telegramBot) {
     try {
       await checkInbox(telegramBot);
     } catch (e) {
-      console.error('📬 InboxMonitor poll error:', e.message);
+      const errDetail = e.response ? (e.response.status + ' ' + JSON.stringify(e.response.data).substring(0, 300)) : '';
+      console.error('📬 InboxMonitor poll error:', e.message, errDetail);
       // Don't stop — log and continue
     }
     // Check overdue cases after each inbox poll

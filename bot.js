@@ -608,7 +608,7 @@ bot.action('summary_wrong', async (ctx) => {
   ]));
 });
 const CORR_FIELD_MAP = { firstname:{key:'firstName'}, lastname:{key:'lastName'}, birthdate:{key:'birthDate'}, birthplace:{key:'birthPlace'}, birthcountry:{key:'birthCountry'}, nationality:{key:'nationality'}, address:{key:'fullAddress'}, moveout:{key:'moveOutDate'}, newaddress:{key:'newFullAddress'}, email:{key:'email'}, phone:{key:'phone'} };
-bot.action(/corr_(.+)/, async (ctx) => { const s = getSession(ctx.chat.id); const field = ctx.match[1]; if (!CORR_FIELD_MAP[field]) return ctx.answerCbQuery(); s.step = `corr_${field}`; await ctx.answerCbQuery(); await ctx.reply(t(s, 'correct_enter_new')); });
+bot.action(/corr_(.+)/, async (ctx) => { const s = getSession(ctx.chat.id); const field = ctx.match[1]; if (!CORR_FIELD_MAP[field]) return ctx.answerCbQuery(); s.step = `corr_${field}`; await ctx.answerCbQuery(); if (field === 'newaddress') { await ctx.reply(t(s, 'ask_newaddress_street')); } else { await ctx.reply(t(s, 'correct_enter_new')); } });
 bot.action('skip_anmeldung', async (ctx) => { await ctx.answerCbQuery(); await askFamily(ctx, getSession(ctx.chat.id)); });
 
 // ─── DELIVERY METHOD HANDLERS ─────────────────────────────────────────

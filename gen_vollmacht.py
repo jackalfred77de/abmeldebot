@@ -143,6 +143,7 @@ def build(data_json_str, output_path):
     auszugdatum  = d.get('AuszugDatum', '')
     language     = d.get('Language', 'de')
     sig_b64      = d.get('SignaturBase64', '') or d.get('Signatur', '')
+    family_members = d.get('FamilyMembers', [])
 
     lang_key  = get_lang_key(language)
     bilingual = (lang_key != 'DE')
@@ -215,19 +216,67 @@ def build(data_json_str, output_path):
         y += LH - 1
     y += 4
 
-    # ── REPRESENT ─────────────────────────────────────────────────────────────
-    yL = write_wrapped(page, LX, y, CW, de['represent'], fontsize=FS)
+    # ── REPRESENT (with family members if any) ────────────────────────────────
+    if family_members:
+        # Build represent text including family members
+        fam_names_de = []
+        fam_names_tr = []
+        for fm in family_members:
+            if isinstance(fm, dict):
+                raw = fm.get('raw', '')
+            else:
+                raw = str(fm).split(',')[0].strip()
+            if raw:
+                fam_names_de.append(raw)
+                fam_names_tr.append(raw)
+        if fam_names_de:
+            represent_de = ('mich sowie die folgenden Familienangehörigen: ' +
+                          ', '.join(fam_names_de) + ' — ' +
+                          'gegenüber dem zuständigen Bürgeramt / der zuständigen '
+                          'Meldebehörde im Zusammenhang mit der Abmeldung einer Wohnung '
+                          'in Berlin zu vertreten.')
+            represent_tr_map = {
+                'PT': ('me representar, bem como os seguintes familiares: ' +
+                      ', '.join(fam_names_tr) + ' — ' +
+                      'perante a Junta de Freguesia / Autoridade de Registro competente, '
+                      'no âmbito do cancelamento de registro de uma residência em Berlim.'),
+                'EN': ('to represent me and the following family members: ' +
+                      ', '.join(fam_names_tr) + ' — ' +
+                      'before the competent Residents Registration Office '
+                      'in connection with the deregistration of a residence in Berlin.'),
+                'DE': represent_de,
+            }
+            represent_tr = represent_tr_map.get(lang_key, represent_de)
+        else:
+            represent_de = de['represent']
+            represent_tr = tr['represent']
+    else:
+        represent_de = de['represent']
+        represent_tr = tr['represent']
+
+    yL = write_wrapped(page, LX, y, CW, represent_de, fontsize=FS)
     if bilingual:
-        yR = write_wrapped(page, RX, y, CW, tr['represent'], fontsize=FS)
+        yR = write_wrapped(page, RX, y, CW, represent_tr, fontsize=FS)
         y = max(yL, yR)
     else:
         y = yL
     y += 4
 
     # ── SCOPE ─────────────────────────────────────────────────────────────────
-    yL = write_wrapped(page, LX, y, CW, de['scope'], fontsize=FS)
+    scope_de = de['scope']
+    scope_tr = tr['scope']
+    if family_members:
+        scope_de = scope_de.replace('in meinem Namen', 'im Namen der oben genannten Personen')
+        scope_tr_map = {
+            'PT': tr['scope'].replace('em meu nome', 'em nome das pessoas acima mencionadas'),
+            'EN': tr['scope'].replace('in my name', 'in the name of the above-mentioned persons'),
+            'DE': scope_de,
+        }
+        scope_tr = scope_tr_map.get(lang_key, scope_de)
+
+    yL = write_wrapped(page, LX, y, CW, scope_de, fontsize=FS)
     if bilingual:
-        yR = write_wrapped(page, RX, y, CW, tr['scope'], fontsize=FS)
+        yR = write_wrapped(page, RX, y, CW, scope_tr, fontsize=FS)
         y = max(yL, yR)
     else:
         y = yL

@@ -375,6 +375,7 @@ function generateAbmeldungPdf(session) {
               Vorname: data.firstName, Nachname: data.lastName, Bezirk: data.bezirk || 'Berlin', Datum: today2,
               Geburtsdatum: data.birthDate || '', Adresse: data.fullAddress || '', AuszugDatum: data.moveOutDate || '',
               Language: session.lang || 'de', SignaturBase64: (data.sigMode === 'paste' && data.signatureImage) ? data.signatureImage : '',
+              FamilyMembers: data.familyMembers || [],
             });
             execFileSync(PYTHON3, [vollmachtScript, vollmachtData, vollmachtPath], { env: getPyEnv(), stdio: 'pipe' });
             session._vollmachtPath = vollmachtPath;

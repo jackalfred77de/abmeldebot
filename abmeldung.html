@@ -316,7 +316,7 @@ const I18N = {
     footer_legal:'Diese Website dient der Beauftragung einer Abmeldung und stellt keine Rechtsberatung dar.',
     err_required:'Pflichtfeld',err_email:'Bitte gültige E-Mail eingeben',err_plz:'Bitte gültige Berliner PLZ eingeben',
     err_consent:'Bitte stimmen Sie der Datenschutzerklärung zu',
-    price_extra_family:' + €49 pro Familienmitglied',price_extra_post:' + €9,90 Postversand',
+    price_extra_family:' + €15 pro Familienmitglied',price_extra_post:' + €9,90 Postversand',
   },
   en: {
     hero_title:'Abmeldung',
@@ -348,7 +348,7 @@ const I18N = {
     footer_legal:'This website is for commissioning a deregistration and does not constitute legal advice.',
     err_required:'Required field',err_email:'Please enter a valid email',err_plz:'Please enter a valid Berlin postal code',
     err_consent:'Please agree to the privacy policy',
-    price_extra_family:' + €49 per family member',price_extra_post:' + €9.90 postal delivery',
+    price_extra_family:' + €15 per family member',price_extra_post:' + €9.90 postal delivery',
   },
   pt: {
     hero_title:'Abmeldung',
@@ -380,7 +380,7 @@ const I18N = {
     footer_legal:'Este site serve para solicitar uma Abmeldung e não constitui aconselhamento jurídico.',
     err_required:'Campo obrigatório',err_email:'Insira um e-mail válido',err_plz:'Insira um PLZ de Berlim válido',
     err_consent:'Por favor, aceite a política de privacidade',
-    price_extra_family:' + €49 por familiar',price_extra_post:' + €9,90 envio por correio',
+    price_extra_family:' + €15 por familiar',price_extra_post:' + €9,90 envio por correio',
   }
 };
 
@@ -482,8 +482,8 @@ function removeFamilyMember(n) {
 // ── Price Calculation ──
 function updatePrice() {
   const t = I18N[currentLang] || I18N.de;
-  let base = 99;
-  let extra = familyCount * 49;
+  let base = 39.90;
+  let extra = familyCount * 15;
   const isPost = document.querySelector('input[name="deliveryMethod"]:checked')?.value === 'post';
   let postal = isPost ? 9.90 : 0;
   let total = base + extra + postal;
@@ -550,7 +550,7 @@ document.getElementById('abmeldungForm').addEventListener('submit', async functi
   }
   const deliveryMethod = fm.get('deliveryMethod') || 'email';
   const isPost = deliveryMethod === 'post';
-  const totalPrice = 99 + (familyMembers.length * 49) + (isPost ? 9.90 : 0);
+  const totalPrice = 39.90 + (familyMembers.length * 15) + (isPost ? 9.90 : 0);
 
   const payload = {
     firstName: fm.get('firstName'),

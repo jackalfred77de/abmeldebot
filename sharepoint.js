@@ -160,9 +160,9 @@ async function createLedgerEntry(session, fileUrls = {}) {
       NewAddress:   data.newFullAddress|| '',
       Nationality:  data.nationality   || '',
       // Gender:    data.gender        || '',  // TODO: create column in SP list first
-      FamilyMembers: JSON.stringify(data.familyMembers || []),
+      // FamilyMembers: JSON.stringify(data.familyMembers || []),  // TODO: create column in SP
       Language:     session.lang       || '',
-      ChatId:       String(session.chatId || ''),
+      // ChatId:     String(session.chatId || ''),  // TODO: create column in SP
       Status:       'email_sent',
       CreatedAt:    now,
       LastUpdated:  now,
@@ -171,12 +171,12 @@ async function createLedgerEntry(session, fileUrls = {}) {
       IdFrontUrl:   fileUrls.idFront   || '',
       IdBackUrl:    fileUrls.idBack    || '',
       AnmeldungUrl: fileUrls.anmeldung || '',
-      DeliveryMethod: data.deliveryMethod || 'email',
-      PostalAddress:  data.postalAddress  || '',
-      PostalFee:      data.postalFee      || 0,
-      ShippingCost:   0,
-      TotalPrice:     data.totalPrice     || 0,
-      AbmeldebestaetigungUrl: '',
+      // DeliveryMethod: data.deliveryMethod || 'email',  // TODO: create column in SP
+      // PostalAddress:  data.postalAddress  || '',  // TODO: create column in SP
+      // PostalFee:      data.postalFee      || 0,  // TODO: create column in SP
+      // ShippingCost:   0,  // TODO: create column in SP
+      // TotalPrice:     data.totalPrice     || 0,  // TODO: create column in SP
+      // AbmeldebestaetigungUrl: '',  // TODO: create column in SP
       Notes:        '',
       // Timeline como JSON string (SharePoint não suporta arrays nativamente)
       Timeline: JSON.stringify([

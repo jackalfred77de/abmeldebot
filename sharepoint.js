@@ -159,7 +159,7 @@ async function createLedgerEntry(session, fileUrls = {}) {
       MoveOutDate:  data.moveOutDate   || '',
       NewAddress:   data.newFullAddress|| '',
       Nationality:  data.nationality   || '',
-      Gender:       data.gender        || '',
+      // Gender:    data.gender        || '',  // TODO: create column in SP list first
       FamilyMembers: JSON.stringify(data.familyMembers || []),
       Language:     session.lang       || '',
       ChatId:       String(session.chatId || ''),

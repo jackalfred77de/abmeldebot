@@ -143,6 +143,9 @@ async function getCasesByStatusAndBezirk(status, bezirk) {
   }
 }
 
+// Track processed message IDs to avoid duplicate notifications
+const _processedMsgIds = new Set();
+
 // ── Main inbox check ───────────────────────────────────────────────────────
 
 async function checkInbox(telegramBot) {
@@ -175,6 +178,16 @@ async function checkInbox(telegramBot) {
     // Skip if not from a Bürgeramt or fax service
     if (!isBuergeramtOrFax(senderEmail)) continue;
     fromBuergeramt++;
+
+    // Skip if already processed (prevents duplicate notifications on mark-as-read failures)
+    if (_processedMsgIds.has(msg.id)) {
+      try {
+        await axios.patch(GRAPH + '/users/' + INBOX_EMAIL + '/messages/' + msg.id, { isRead: true }, { headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, timeout: 10000 });
+      } catch (_) {}
+      continue;
+    }
+    _processedMsgIds.add(msg.id);
+    if (_processedMsgIds.size > 200) { const first = _processedMsgIds.values().next().value; _processedMsgIds.delete(first); }
 
     // Try to match to a case
     const matchResult = await matchEmailToCase(subject, bodyPreview, senderEmail);
@@ -314,14 +327,14 @@ async function checkInbox(telegramBot) {
       }
       // Mark as read so the same email doesn't trigger repeated notifications
       try {
-        const token = await getGraphToken();
         await axios.patch(
           `${GRAPH}/users/${INBOX_EMAIL}/messages/${msg.id}`,
           { isRead: true },
           { headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, timeout: 10000 }
         );
+        console.log('📬 No-match email marked as read: ' + subject.substring(0, 60));
       } catch (markErr) {
-        console.error('⚠️ Could not mark no-match email as read:', markErr.message);
+        console.error('⚠️ Could not mark no-match email as read:', markErr.message, markErr.response ? markErr.response.status : '');
       }
     }
   }

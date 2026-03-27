@@ -119,7 +119,7 @@ async function notifyAdmin(session) {
   if (!ADMIN_CHAT_ID) return;
   const { data } = session;
   const deliveryInfo = data.deliveryMethod === 'post' ? `📮 Post (+€15,00)${data.postalAddress ? ' → ' + data.postalAddress : ''}` : '📧 E-Mail';
-  const totalPrice = data.totalPrice ? `€${data.totalPrice.toFixed(2)}` : (data.service === 'full' ? '€39.99' : '€4.99');
+  const totalPrice = data.totalPrice ? `€${data.totalPrice.toFixed(2)}` : (data.service === 'full' ? '€39.90' : '€4.90');
   const message = `🔔 **Neue Abmeldung!**\n\n👤 ${data.firstName} ${data.lastName}\n📧 ${data.email}\n📱 ${data.phone || '–'}\n💼 ${data.service === 'full' ? 'Full Service' : 'DIY'}\n📬 Zustellung: ${deliveryInfo}\n💰 Gesamt: ${totalPrice}\n📆 Auszug: ${data.moveOutDate}\n📍 ${data.fullAddress}\n🏛 Bürgeramt: ${data.bezirk}\n\nBestellung: ${data.orderId}`;
   try {
     await bot.telegram.sendMessage(ADMIN_CHAT_ID, message, { parse_mode: 'Markdown' });
@@ -303,8 +303,8 @@ bot.action(/lang_(.+)/, (ctx) => {
   const session = getSession(ctx.chat.id); session.lang = ctx.match[1]; session.step = 'service';
   ctx.answerCbQuery();
   ctx.reply(t(session, 'service_select'), Markup.inlineKeyboard([
-    [Markup.button.callback('📝 DIY - €4.99', 'service_diy')],
-    [Markup.button.callback('🎯 Full Service - €39.99', 'service_full')]
+    [Markup.button.callback('📝 DIY - €4.90', 'service_diy')],
+    [Markup.button.callback('🎯 Full Service - €39.90', 'service_full')]
   ]));
 });
 
@@ -904,14 +904,15 @@ bot.on('document', async (ctx) => {
 // ─── SHOW SUMMARY ───────────────────────────────────────────────────────
 async function showSummary(ctx, session) {
   const { data } = session;
-  const serviceLabel = data.service === 'full' ? 'Full Service (€39.99)' : 'DIY (€4.99)';
+  const serviceLabel = data.service === 'full' ? 'Full Service (€39.90)' : 'DIY (€4.90)';
   const newAddr = data.newFullAddress || [data.newStreet, data.newPlzCity, data.newCountry].filter(Boolean).join(', ');
   let familySummary = '';
   if (data.familyMembers && data.familyMembers.length > 0) { familySummary = '👨‍👩‍👧 Familienmitglieder:\n' + data.familyMembers.map((m, i) => { if (typeof m === 'object') { const bp = [m.birthPlace, m.birthCountry].filter(Boolean).join(', '); return `  ${i+2}. ${m.raw}${bp ? ' (🏙 ' + bp + ')' : ''} (${m.gender || '?'}, ${m.nationality || '?'})`; } return `  ${i+2}. ${m}`; }).join('\n') + '\n\n'; }
   // Calculate total price
-  const basePrice = data.service === 'full' ? 39.99 : 4.99;
+  const basePrice = data.service === 'full' ? 39.90 : 4.90;
   const postalFee = data.postalFee || 0;
-  data.totalPrice = basePrice + postalFee;
+  const familyFee = (data.familyMembers && data.familyMembers.length > 0) ? data.familyMembers.length * 15 : 0;
+  data.totalPrice = basePrice + postalFee + familyFee;
   // Delivery line
   const deliveryLine = data.deliveryMethod === 'post'
     ? t(session, 'delivery_post_label') + (data.postalAddress ? `\n📮 ${data.postalAddress}` : '')

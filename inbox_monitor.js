@@ -299,7 +299,7 @@ async function checkInbox(telegramBot) {
       await processDelivery(caseData, orderId, telegramBot);
 
     } else {
-      // No match — notify admin but do NOT mark as read
+      // No match — notify admin once, then mark as read to avoid repeated alerts
       if (telegramBot && ADMIN_CHAT_ID) {
         try {
           await telegramBot.telegram.sendMessage(ADMIN_CHAT_ID,
@@ -311,6 +311,17 @@ async function checkInbox(telegramBot) {
         } catch (tgErr) {
           console.error('⚠️ Inbox TG notify (no-match) error:', tgErr.message);
         }
+      }
+      // Mark as read so the same email doesn't trigger repeated notifications
+      try {
+        const token = await getGraphToken();
+        await axios.patch(
+          `${GRAPH}/users/${INBOX_EMAIL}/messages/${msg.id}`,
+          { isRead: true },
+          { headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, timeout: 10000 }
+        );
+      } catch (markErr) {
+        console.error('⚠️ Could not mark no-match email as read:', markErr.message);
       }
     }
   }

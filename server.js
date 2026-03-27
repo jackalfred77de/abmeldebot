@@ -419,8 +419,9 @@ app.post('/api/submit-abmeldung', async (req, res) => {
     console.log('🌐 Web submission: ' + orderId + ' — ' + d.firstName + ' ' + d.lastName + ' (' + d.email + ')');
     res.json({ ok: true, orderId });
   } catch (err) {
-    console.error('API submit-abmeldung error:', err.message);
-    res.status(500).json({ error: err.message });
+    const detail = err.response ? JSON.stringify(err.response.data).substring(0, 500) : '';
+    console.error('API submit-abmeldung error:', err.message, detail);
+    res.status(500).json({ error: err.message, detail });
   }
 });
 

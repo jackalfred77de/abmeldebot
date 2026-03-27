@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAFER Easy — Abmeldung online beauftragen</title>
+<meta name="description" content="Berliner Abmeldung einfach online beauftragen. Kanzlei Rechtsanwalt Frederico Reichel übernimmt die komplette Abmeldung beim Bürgeramt für Sie.">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#ffffff;--bg-card:#f8f8f9;--border:#e5e5e8;
+  --text:#1a1a1a;--text-muted:#6b6b73;--text-dim:#9b9ba3;
+  --accent:#1a1a1a;--accent-hover:#333;
+  --green:#1a7a42;--green-bg:#e8f5e9;
+  --blue:#1565c0;--blue-bg:#e3f2fd;
+  --red:#c62828;--red-bg:#ffebee;
+  --yellow:#8a6d00;--yellow-bg:#fff8e1;
+  --radius:10px;--radius-sm:6px;
+  --shadow:0 1px 3px rgba(0,0,0,0.08);
+}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:#fff;position:sticky;top:0;z-index:100}
+.topbar-brand{display:flex;align-items:center;gap:10px}
+.topbar-brand .logo{height:30px;width:30px;object-fit:contain}
+.topbar-brand .name{font-size:15px;font-weight:500;letter-spacing:1.8px;color:var(--text)}
+.topbar-brand .sub{font-size:10px;color:var(--text-dim);letter-spacing:.3px}
+.topbar a{font-size:12px;color:var(--text-muted);text-decoration:none}
+.topbar a:hover{color:var(--text)}
+
+.hero{max-width:680px;margin:0 auto;padding:48px 24px 32px}
+.hero h1{font-size:28px;font-weight:600;letter-spacing:-.3px;margin-bottom:8px}
+.hero p{font-size:15px;color:var(--text-muted);max-width:560px}
+
+.lang-switcher{display:flex;gap:6px;margin-top:16px}
+.lang-switcher button{padding:5px 14px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text-muted);cursor:pointer;transition:all .15s}
+.lang-switcher button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+.form-container{max-width:680px;margin:0 auto;padding:0 24px 64px}
+.section{margin-bottom:28px}
+.section-title{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-dim);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px}
+.field .hint{font-size:11px;color:var(--text-dim);margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;padding:10px 12px;font-size:14px;font-family:inherit;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;color:var(--text);transition:border .15s}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
+.field input.error,.field select.error{border-color:var(--red)}
+.field .error-msg{font-size:11px;color:var(--red);margin-top:2px;display:none}
+.field textarea{resize:vertical;min-height:60px}
+
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+@media(max-width:540px){.row,.row-3{grid-template-columns:1fr}}
+
+.radio-group{display:flex;gap:10px;flex-wrap:wrap}
+.radio-group label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .15s}
+.radio-group label:has(input:checked){border-color:var(--accent);background:rgba(0,0,0,.03)}
+.radio-group input{accent-color:var(--accent)}
+
+.checkbox-row{display:flex;align-items:flex-start;gap:8px;margin-top:8px}
+.checkbox-row input[type="checkbox"]{margin-top:3px;accent-color:var(--accent)}
+.checkbox-row span{font-size:12px;color:var(--text-muted);line-height:1.5}
+.checkbox-row a{color:var(--accent);text-decoration:underline}
+
+.price-box{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-top:24px}
+.price-box .label{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim)}
+.price-box .price{font-size:28px;font-weight:600;margin-top:4px}
+.price-box .detail{font-size:12px;color:var(--text-muted);margin-top:4px}
+
+.btn-submit{display:block;width:100%;padding:14px;font-size:15px;font-weight:500;letter-spacing:.3px;color:#fff;background:var(--accent);border:none;border-radius:var(--radius);cursor:pointer;transition:background .15s;margin-top:24px}
+.btn-submit:hover{background:var(--accent-hover)}
+.btn-submit:disabled{opacity:.5;cursor:not-allowed}
+
+.success-box{display:none;max-width:680px;margin:80px auto;padding:40px 24px;text-align:center}
+.success-box .icon{font-size:48px;margin-bottom:16px}
+.success-box h2{font-size:22px;margin-bottom:8px}
+.success-box p{font-size:14px;color:var(--text-muted);max-width:480px;margin:0 auto}
+.success-box .order-id{font-family:monospace;font-size:15px;background:var(--bg-card);padding:8px 16px;border-radius:var(--radius-sm);display:inline-block;margin-top:12px;border:1px solid var(--border)}
+
+.footer{text-align:center;padding:32px 24px;border-top:1px solid var(--border);margin-top:40px}
+.footer p{font-size:11px;color:var(--text-dim);line-height:1.7}
+.footer a{color:var(--text-muted);text-decoration:none}
+
+.loading-overlay{display:none;position:fixed;inset:0;background:rgba(255,255,255,.85);z-index:200;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+.loading-overlay.show{display:flex}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <div>
+      <div class="name">RAFER</div>
+      <div class="sub">Easy Abmeldung</div>
+    </div>
+  </div>
+  <a href="https://rafer.de" target="_blank">rafer.de</a>
+</div>
+
+<div id="formView">
+  <div class="hero">
+    <h1 data-i18n="hero_title">Abmeldung online beauftragen</h1>
+    <p data-i18n="hero_sub">Wir übernehmen Ihre Abmeldung beim Berliner Bürgeramt — schnell, sicher, durch einen Rechtsanwalt.</p>
+    <div class="lang-switcher">
+      <button onclick="setLang('de')" class="active" id="btn-de">Deutsch</button>
+      <button onclick="setLang('en')" id="btn-en">English</button>
+      <button onclick="setLang('pt')" id="btn-pt">Português</button>
+    </div>
+  </div>
+
+  <form class="form-container" id="abmeldungForm" novalidate>
+    <!-- Personal Data -->
+    <div class="section">
+      <div class="section-title" data-i18n="sec_personal">Persönliche Daten</div>
+      <div class="row">
+        <div class="field">
+          <label data-i18n="lbl_firstname">Vorname *</label>
+          <input type="text" name="firstName" required autocomplete="given-name">
+          <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+        </div>
+        <div class="field">
+          <label data-i18n="lbl_lastname">Nachname *</label>
+          <input type="text" name="lastName" required autocomplete="family-name">
+          <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label data-i18n="lbl_dob">Geburtsdatum *</label>
+          <input type="date" name="dob" required>
+          <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+        </div>
+        <div class="field">
+          <label data-i18n="lbl_birthplace">Geburtsort *</label>
+          <input type="text" name="birthPlace" required placeholder="z.B. São Paulo">
+          <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label data-i18n="lbl_nationality">Staatsangehörigkeit *</label>
+          <input type="text" name="nationality" required placeholder="z.B. Brasilianisch">
+          <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+        </div>
+        <div class="field">
+          <label data-i18n="lbl_gender">Geschlecht *</label>
+          <div class="radio-group">
+            <label><input type="radio" name="gender" value="male" required><span data-i18n="opt_male">Männlich</span></label>
+            <label><input type="radio" name="gender" value="female"><span data-i18n="opt_female">Weiblich</span></label>
+          </div>
+          <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Berlin Address -->
+    <div class="section">
+      <div class="section-title" data-i18n="sec_berlin">Berliner Adresse (abzumelden)</div>
+      <div class="field">
+        <label data-i18n="lbl_street">Straße und Hausnummer *</label>
+        <input type="text" name="street" required placeholder="z.B. Katzbachstraße 18">
+        <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label data-i18n="lbl_plz">PLZ *</label>
+          <input type="text" name="plz" required maxlength="5" pattern="[0-9]{5}" placeholder="z.B. 10965" oninput="checkPLZ(this)">
+          <div class="hint" id="bezirkHint" style="color:var(--green);display:none"></div>
+          <div class="error-msg" data-i18n="err_plz">Bitte gültige Berliner PLZ eingeben</div>
+        </div>
+        <div class="field">
+          <label data-i18n="lbl_moveout">Auszugsdatum *</label>
+          <input type="date" name="moveOutDate" required>
+          <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- New Address -->
+    <div class="section">
+      <div class="section-title" data-i18n="sec_new">Neue Adresse (nach der Abmeldung)</div>
+      <div class="field">
+        <label data-i18n="lbl_new_street">Straße und Hausnummer *</label>
+        <input type="text" name="newStreet" required>
+        <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label data-i18n="lbl_new_plzcity">PLZ und Stadt *</label>
+          <input type="text" name="newPlzCity" required placeholder="z.B. 01000-000 São Paulo">
+          <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+        </div>
+        <div class="field">
+          <label data-i18n="lbl_new_country">Land *</label>
+          <input type="text" name="newCountry" required placeholder="z.B. Brasilien">
+          <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contact -->
+    <div class="section">
+      <div class="section-title" data-i18n="sec_contact">Kontakt</div>
+      <div class="row">
+        <div class="field">
+          <label data-i18n="lbl_email">E-Mail *</label>
+          <input type="email" name="email" required autocomplete="email">
+          <div class="error-msg" data-i18n="err_email">Bitte gültige E-Mail eingeben</div>
+        </div>
+        <div class="field">
+          <label data-i18n="lbl_phone">Telefon / WhatsApp *</label>
+          <input type="tel" name="phone" required autocomplete="tel" placeholder="+55 11 99999-9999">
+          <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delivery -->
+    <div class="section">
+      <div class="section-title" data-i18n="sec_delivery">Zustellung der Abmeldebestätigung</div>
+      <div class="radio-group">
+        <label><input type="radio" name="deliveryMethod" value="email" checked><span data-i18n="opt_email">Per E-Mail (kostenlos)</span></label>
+        <label><input type="radio" name="deliveryMethod" value="post"><span data-i18n="opt_post">Per Post (+€9,90)</span></label>
+      </div>
+      <div class="field" id="postalAddressField" style="display:none;margin-top:12px">
+        <label data-i18n="lbl_postal">Postadresse für Zustellung</label>
+        <textarea name="postalAddress" rows="3" placeholder="Vollständige Postadresse"></textarea>
+      </div>
+    </div>
+
+    <!-- Family members -->
+    <div class="section">
+      <div class="section-title" data-i18n="sec_family">Familienmitglieder (optional)</div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px" data-i18n="family_hint">Wenn Sie Familienmitglieder mitabmelden möchten, tragen Sie deren Daten hier ein. Max. 2 Personen.</p>
+      <div id="familyContainer"></div>
+      <button type="button" id="addFamilyBtn" onclick="addFamilyMember()" style="font-size:12px;padding:6px 14px;border:1px dashed var(--border);border-radius:var(--radius-sm);background:none;cursor:pointer;color:var(--text-muted)">
+        <span data-i18n="btn_add_family">+ Familienmitglied hinzufügen</span>
+      </button>
+    </div>
+
+    <!-- Notes -->
+    <div class="section">
+      <div class="section-title" data-i18n="sec_notes">Anmerkungen</div>
+      <div class="field">
+        <textarea name="notes" rows="3" data-i18n-placeholder="notes_placeholder" placeholder="Optionale Hinweise oder Fragen"></textarea>
+      </div>
+    </div>
+
+    <!-- Price + Consent -->
+    <div class="price-box">
+      <div class="label" data-i18n="price_label">Gesamtpreis (Full Service)</div>
+      <div class="price" id="totalPrice">€99,00</div>
+      <div class="detail" id="priceDetail" data-i18n="price_detail">Abmeldung durch Rechtsanwalt inkl. Einreichung beim Bürgeramt</div>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="consentCheck" required>
+      <span data-i18n="consent_text">Ich stimme der Verarbeitung meiner Daten gemäß der <a href="https://rafer.de/datenschutz-abmeldung" target="_blank">Datenschutzerklärung</a> zu und beauftrage Kanzlei Reichel (RAFER) mit der Durchführung meiner Abmeldung. *</span>
+    </div>
+
+    <button type="submit" class="btn-submit" data-i18n="btn_submit">Abmeldung beauftragen</button>
+  </form>
+</div>
+
+<!-- Success -->
+<div class="success-box" id="successView">
+  <div class="icon">✓</div>
+  <h2 data-i18n="success_title">Auftrag eingegangen!</h2>
+  <p data-i18n="success_text">Vielen Dank! Wir haben Ihren Auftrag erhalten und werden uns innerhalb von 24 Stunden per E-Mail bei Ihnen melden, um die benötigten Unterlagen (Ausweiskopie und Unterschrift) einzuholen.</p>
+  <div class="order-id" id="successOrderId"></div>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div style="font-size:14px;color:var(--text-muted)" data-i18n="loading">Wird gesendet…</div>
+</div>
+
+<div class="footer">
+  <p>Kanzlei Rechtsanwalt Frederico E. Reichel · Katzbachstraße 18 · 10965 Berlin<br>
+  T +49 30 44312792 · <a href="mailto:abmeldung@rafer.de">abmeldung@rafer.de</a> · <a href="https://rafer.de">rafer.de</a><br><br>
+  <span style="font-size:10px" data-i18n="footer_legal">Diese Website dient der Beauftragung einer Abmeldung und stellt keine Rechtsberatung dar.</span></p>
+</div>
+
+<script>
+// ── i18n ──
+const I18N = {
+  de: {
+    hero_title:'Abmeldung online beauftragen',
+    hero_sub:'Wir übernehmen Ihre Abmeldung beim Berliner Bürgeramt — schnell, sicher, durch einen Rechtsanwalt.',
+    sec_personal:'Persönliche Daten',
+    lbl_firstname:'Vorname *',lbl_lastname:'Nachname *',lbl_dob:'Geburtsdatum *',
+    lbl_birthplace:'Geburtsort *',lbl_nationality:'Staatsangehörigkeit *',lbl_gender:'Geschlecht *',
+    opt_male:'Männlich',opt_female:'Weiblich',
+    sec_berlin:'Berliner Adresse (abzumelden)',
+    lbl_street:'Straße und Hausnummer *',lbl_plz:'PLZ *',lbl_moveout:'Auszugsdatum *',
+    sec_new:'Neue Adresse (nach der Abmeldung)',
+    lbl_new_street:'Straße und Hausnummer *',lbl_new_plzcity:'PLZ und Stadt *',lbl_new_country:'Land *',
+    sec_contact:'Kontakt',lbl_email:'E-Mail *',lbl_phone:'Telefon / WhatsApp *',
+    sec_delivery:'Zustellung der Abmeldebestätigung',
+    opt_email:'Per E-Mail (kostenlos)',opt_post:'Per Post (+€9,90)',
+    lbl_postal:'Postadresse für Zustellung',
+    sec_family:'Familienmitglieder (optional)',
+    family_hint:'Wenn Sie Familienmitglieder mitabmelden möchten, tragen Sie deren Daten hier ein. Max. 2 Personen.',
+    btn_add_family:'+ Familienmitglied hinzufügen',
+    fam_name:'Name *',fam_dob:'Geburtsdatum *',fam_nationality:'Staatsangehörigkeit',fam_remove:'Entfernen',
+    sec_notes:'Anmerkungen',notes_placeholder:'Optionale Hinweise oder Fragen',
+    price_label:'Gesamtpreis (Full Service)',
+    price_detail:'Abmeldung durch Rechtsanwalt inkl. Einreichung beim Bürgeramt',
+    consent_text:'Ich stimme der Verarbeitung meiner Daten gemäß der <a href="https://rafer.de/datenschutz-abmeldung" target="_blank">Datenschutzerklärung</a> zu und beauftrage Kanzlei Reichel (RAFER) mit der Durchführung meiner Abmeldung. *',
+    btn_submit:'Abmeldung beauftragen',
+    success_title:'Auftrag eingegangen!',
+    success_text:'Vielen Dank! Wir haben Ihren Auftrag erhalten und werden uns innerhalb von 24 Stunden per E-Mail bei Ihnen melden, um die benötigten Unterlagen (Ausweiskopie und Unterschrift) einzuholen.',
+    loading:'Wird gesendet…',
+    footer_legal:'Diese Website dient der Beauftragung einer Abmeldung und stellt keine Rechtsberatung dar.',
+    err_required:'Pflichtfeld',err_email:'Bitte gültige E-Mail eingeben',err_plz:'Bitte gültige Berliner PLZ eingeben',
+    err_consent:'Bitte stimmen Sie der Datenschutzerklärung zu',
+    price_extra_family:' + €49 pro Familienmitglied',price_extra_post:' + €9,90 Postversand',
+  },
+  en: {
+    hero_title:'Request your Abmeldung online',
+    hero_sub:'We handle your Berlin deregistration at the Bürgeramt — fast, secure, handled by a lawyer.',
+    sec_personal:'Personal Information',
+    lbl_firstname:'First name *',lbl_lastname:'Last name *',lbl_dob:'Date of birth *',
+    lbl_birthplace:'Place of birth *',lbl_nationality:'Nationality *',lbl_gender:'Gender *',
+    opt_male:'Male',opt_female:'Female',
+    sec_berlin:'Berlin address (to deregister)',
+    lbl_street:'Street and house number *',lbl_plz:'Postal code *',lbl_moveout:'Move-out date *',
+    sec_new:'New address (after deregistration)',
+    lbl_new_street:'Street and house number *',lbl_new_plzcity:'Postal code and city *',lbl_new_country:'Country *',
+    sec_contact:'Contact',lbl_email:'Email *',lbl_phone:'Phone / WhatsApp *',
+    sec_delivery:'Delivery of confirmation',
+    opt_email:'By email (free)',opt_post:'By post (+€9.90)',
+    lbl_postal:'Postal address for delivery',
+    sec_family:'Family members (optional)',
+    family_hint:'If you want to deregister family members as well, enter their details here. Max. 2 persons.',
+    btn_add_family:'+ Add family member',
+    fam_name:'Name *',fam_dob:'Date of birth *',fam_nationality:'Nationality',fam_remove:'Remove',
+    sec_notes:'Notes',notes_placeholder:'Optional notes or questions',
+    price_label:'Total price (Full Service)',
+    price_detail:'Deregistration by a lawyer incl. submission to the Bürgeramt',
+    consent_text:'I agree to the processing of my data according to the <a href="https://rafer.de/datenschutz-abmeldung" target="_blank">Privacy Policy</a> and commission Kanzlei Reichel (RAFER) with carrying out my deregistration. *',
+    btn_submit:'Submit Abmeldung request',
+    success_title:'Request received!',
+    success_text:'Thank you! We have received your request and will contact you by email within 24 hours to collect the required documents (ID copy and signature).',
+    loading:'Submitting…',
+    footer_legal:'This website is for commissioning a deregistration and does not constitute legal advice.',
+    err_required:'Required field',err_email:'Please enter a valid email',err_plz:'Please enter a valid Berlin postal code',
+    err_consent:'Please agree to the privacy policy',
+    price_extra_family:' + €49 per family member',price_extra_post:' + €9.90 postal delivery',
+  },
+  pt: {
+    hero_title:'Solicite sua Abmeldung online',
+    hero_sub:'Cuidamos da sua Abmeldung no Bürgeramt de Berlim — rápido, seguro, realizado por um advogado.',
+    sec_personal:'Dados Pessoais',
+    lbl_firstname:'Nome *',lbl_lastname:'Sobrenome *',lbl_dob:'Data de nascimento *',
+    lbl_birthplace:'Local de nascimento *',lbl_nationality:'Nacionalidade *',lbl_gender:'Sexo *',
+    opt_male:'Masculino',opt_female:'Feminino',
+    sec_berlin:'Endereço em Berlim (a cancelar)',
+    lbl_street:'Rua e número *',lbl_plz:'PLZ *',lbl_moveout:'Data de saída *',
+    sec_new:'Novo endereço (após o cancelamento)',
+    lbl_new_street:'Rua e número *',lbl_new_plzcity:'CEP e cidade *',lbl_new_country:'País *',
+    sec_contact:'Contato',lbl_email:'E-mail *',lbl_phone:'Telefone / WhatsApp *',
+    sec_delivery:'Entrega da confirmação',
+    opt_email:'Por e-mail (grátis)',opt_post:'Por correio (+€9,90)',
+    lbl_postal:'Endereço postal para entrega',
+    sec_family:'Familiares (opcional)',
+    family_hint:'Se deseja cancelar familiares também, insira os dados aqui. Máx. 2 pessoas.',
+    btn_add_family:'+ Adicionar familiar',
+    fam_name:'Nome *',fam_dob:'Data de nascimento *',fam_nationality:'Nacionalidade',fam_remove:'Remover',
+    sec_notes:'Observações',notes_placeholder:'Notas ou perguntas opcionais',
+    price_label:'Preço total (Full Service)',
+    price_detail:'Abmeldung por advogado incl. envio ao Bürgeramt',
+    consent_text:'Concordo com o processamento dos meus dados conforme a <a href="https://rafer.de/datenschutz-abmeldung" target="_blank">Política de Privacidade</a> e contrato a Kanzlei Reichel (RAFER) para realizar minha Abmeldung. *',
+    btn_submit:'Solicitar Abmeldung',
+    success_title:'Solicitação recebida!',
+    success_text:'Obrigado! Recebemos sua solicitação e entraremos em contato por e-mail em até 24 horas para solicitar os documentos necessários (cópia do documento e assinatura).',
+    loading:'Enviando…',
+    footer_legal:'Este site serve para solicitar uma Abmeldung e não constitui aconselhamento jurídico.',
+    err_required:'Campo obrigatório',err_email:'Insira um e-mail válido',err_plz:'Insira um PLZ de Berlim válido',
+    err_consent:'Por favor, aceite a política de privacidade',
+    price_extra_family:' + €49 por familiar',price_extra_post:' + €9,90 envio por correio',
+  }
+};
+
+let currentLang = 'de';
+function setLang(lang) {
+  currentLang = lang;
+  document.querySelectorAll('.lang-switcher button').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-'+lang).classList.add('active');
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (I18N[lang] && I18N[lang][key]) el.innerHTML = I18N[lang][key];
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    if (I18N[lang] && I18N[lang][key]) el.placeholder = I18N[lang][key];
+  });
+  updatePrice();
+}
+
+// ── PLZ → Bezirk ──
+const PLZ_MAP = {
+'10115':'Mitte','10117':'Mitte','10119':'Mitte','10135':'Mitte','10178':'Mitte','10179':'Mitte',
+'10551':'Mitte','10553':'Mitte','10555':'Mitte','10557':'Mitte','10559':'Mitte',
+'13347':'Mitte','13349':'Mitte','13351':'Mitte','13353':'Mitte','13355':'Mitte','13357':'Mitte','13359':'Mitte',
+'10243':'Friedrichshain-Kreuzberg','10245':'Friedrichshain-Kreuzberg','10247':'Friedrichshain-Kreuzberg','10249':'Friedrichshain-Kreuzberg',
+'10961':'Friedrichshain-Kreuzberg','10963':'Friedrichshain-Kreuzberg','10965':'Friedrichshain-Kreuzberg','10967':'Friedrichshain-Kreuzberg','10969':'Friedrichshain-Kreuzberg','10997':'Friedrichshain-Kreuzberg','10999':'Friedrichshain-Kreuzberg',
+'10405':'Pankow','10407':'Pankow','10409':'Pankow','10435':'Pankow','10437':'Pankow','10439':'Pankow',
+'13086':'Pankow','13088':'Pankow','13089':'Pankow','13091':'Pankow','13093':'Pankow','13095':'Pankow','13097':'Pankow','13099':'Pankow',
+'13125':'Pankow','13127':'Pankow','13129':'Pankow','13156':'Pankow','13158':'Pankow','13159':'Pankow','13187':'Pankow','13189':'Pankow',
+'10585':'Charlottenburg-Wilmersdorf','10587':'Charlottenburg-Wilmersdorf','10589':'Charlottenburg-Wilmersdorf',
+'10623':'Charlottenburg-Wilmersdorf','10625':'Charlottenburg-Wilmersdorf','10627':'Charlottenburg-Wilmersdorf','10629':'Charlottenburg-Wilmersdorf',
+'10707':'Charlottenburg-Wilmersdorf','10709':'Charlottenburg-Wilmersdorf','10711':'Charlottenburg-Wilmersdorf','10713':'Charlottenburg-Wilmersdorf','10715':'Charlottenburg-Wilmersdorf','10717':'Charlottenburg-Wilmersdorf','10719':'Charlottenburg-Wilmersdorf',
+'14050':'Charlottenburg-Wilmersdorf','14052':'Charlottenburg-Wilmersdorf','14053':'Charlottenburg-Wilmersdorf','14055':'Charlottenburg-Wilmersdorf','14057':'Charlottenburg-Wilmersdorf','14059':'Charlottenburg-Wilmersdorf',
+'13581':'Spandau','13583':'Spandau','13585':'Spandau','13587':'Spandau','13589':'Spandau','13591':'Spandau','13593':'Spandau','13595':'Spandau','13597':'Spandau','13599':'Spandau',
+'12157':'Steglitz-Zehlendorf','12159':'Steglitz-Zehlendorf','12161':'Steglitz-Zehlendorf','12163':'Steglitz-Zehlendorf','12165':'Steglitz-Zehlendorf','12167':'Steglitz-Zehlendorf','12169':'Steglitz-Zehlendorf',
+'12203':'Steglitz-Zehlendorf','12205':'Steglitz-Zehlendorf','12207':'Steglitz-Zehlendorf','12209':'Steglitz-Zehlendorf',
+'14109':'Steglitz-Zehlendorf','14129':'Steglitz-Zehlendorf','14163':'Steglitz-Zehlendorf','14165':'Steglitz-Zehlendorf','14167':'Steglitz-Zehlendorf','14169':'Steglitz-Zehlendorf','14195':'Steglitz-Zehlendorf','14197':'Steglitz-Zehlendorf',
+'12043':'Neukölln','12045':'Neukölln','12047':'Neukölln','12049':'Neukölln','12051':'Neukölln','12053':'Neukölln','12055':'Neukölln','12057':'Neukölln','12059':'Neukölln',
+'12099':'Neukölln','12101':'Neukölln','12103':'Neukölln','12105':'Neukölln','12107':'Neukölln','12109':'Neukölln',
+'12305':'Neukölln','12307':'Neukölln','12309':'Neukölln','12347':'Neukölln','12349':'Neukölln','12351':'Neukölln','12353':'Neukölln','12355':'Neukölln','12357':'Neukölln','12359':'Neukölln',
+'12435':'Treptow-Köpenick','12437':'Treptow-Köpenick','12439':'Treptow-Köpenick',
+'12459':'Treptow-Köpenick','12487':'Treptow-Köpenick','12489':'Treptow-Köpenick',
+'12524':'Treptow-Köpenick','12526':'Treptow-Köpenick','12527':'Treptow-Köpenick','12555':'Treptow-Köpenick','12557':'Treptow-Köpenick','12559':'Treptow-Köpenick',
+'12587':'Treptow-Köpenick','12589':'Treptow-Köpenick',
+'10315':'Lichtenberg','10317':'Lichtenberg','10318':'Lichtenberg','10319':'Lichtenberg',
+'10365':'Lichtenberg','10367':'Lichtenberg','10369':'Lichtenberg',
+'13051':'Lichtenberg','13053':'Lichtenberg','13055':'Lichtenberg','13057':'Lichtenberg','13059':'Lichtenberg',
+'12619':'Marzahn-Hellersdorf','12621':'Marzahn-Hellersdorf','12623':'Marzahn-Hellersdorf','12627':'Marzahn-Hellersdorf','12629':'Marzahn-Hellersdorf',
+'12679':'Marzahn-Hellersdorf','12681':'Marzahn-Hellersdorf','12683':'Marzahn-Hellersdorf','12685':'Marzahn-Hellersdorf','12687':'Marzahn-Hellersdorf','12689':'Marzahn-Hellersdorf',
+'12247':'Tempelhof-Schöneberg','12249':'Tempelhof-Schöneberg',
+'10777':'Tempelhof-Schöneberg','10779':'Tempelhof-Schöneberg','10781':'Tempelhof-Schöneberg','10783':'Tempelhof-Schöneberg','10785':'Tempelhof-Schöneberg','10787':'Tempelhof-Schöneberg','10789':'Tempelhof-Schöneberg',
+'10823':'Tempelhof-Schöneberg','10825':'Tempelhof-Schöneberg','10827':'Tempelhof-Schöneberg',
+'10829':'Tempelhof-Schöneberg',
+'12101':'Tempelhof-Schöneberg','12103':'Tempelhof-Schöneberg','12105':'Tempelhof-Schöneberg','12107':'Tempelhof-Schöneberg','12109':'Tempelhof-Schöneberg',
+'13403':'Reinickendorf','13405':'Reinickendorf','13407':'Reinickendorf','13409':'Reinickendorf',
+'13435':'Reinickendorf','13437':'Reinickendorf','13439':'Reinickendorf',
+'13465':'Reinickendorf','13467':'Reinickendorf','13469':'Reinickendorf',
+'13503':'Reinickendorf','13505':'Reinickendorf','13507':'Reinickendorf','13509':'Reinickendorf',
+};
+
+function checkPLZ(input) {
+  const v = input.value.trim();
+  const hint = document.getElementById('bezirkHint');
+  if (v.length === 5 && PLZ_MAP[v]) {
+    hint.textContent = '✓ Bezirk: ' + PLZ_MAP[v];
+    hint.style.display = 'block';
+    input.classList.remove('error');
+  } else if (v.length === 5) {
+    hint.textContent = '';
+    hint.style.display = 'none';
+  } else {
+    hint.style.display = 'none';
+  }
+}
+
+// ── Family Members ──
+let familyCount = 0;
+function addFamilyMember() {
+  if (familyCount >= 2) return;
+  familyCount++;
+  const t = I18N[currentLang] || I18N.de;
+  const div = document.createElement('div');
+  div.className = 'family-member';
+  div.id = 'fam-' + familyCount;
+  div.style.cssText = 'border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:10px;background:var(--bg-card)';
+  div.innerHTML = '<div class="row"><div class="field"><label>'+t.fam_name+'</label><input type="text" name="famName'+familyCount+'" required></div><div class="field"><label>'+t.fam_dob+'</label><input type="date" name="famDob'+familyCount+'" required></div></div><div class="row"><div class="field"><label>'+t.fam_nationality+'</label><input type="text" name="famNat'+familyCount+'"></div><div class="field" style="display:flex;align-items:end"><button type="button" onclick="removeFamilyMember('+familyCount+')" style="font-size:12px;padding:8px 14px;border:1px solid var(--red);border-radius:var(--radius-sm);background:var(--red-bg);color:var(--red);cursor:pointer">'+t.fam_remove+'</button></div></div>';
+  document.getElementById('familyContainer').appendChild(div);
+  if (familyCount >= 2) document.getElementById('addFamilyBtn').style.display = 'none';
+  updatePrice();
+}
+function removeFamilyMember(n) {
+  const el = document.getElementById('fam-' + n);
+  if (el) el.remove();
+  familyCount--;
+  document.getElementById('addFamilyBtn').style.display = '';
+  updatePrice();
+}
+
+// ── Price Calculation ──
+function updatePrice() {
+  const t = I18N[currentLang] || I18N.de;
+  let base = 99;
+  let extra = familyCount * 49;
+  const isPost = document.querySelector('input[name="deliveryMethod"]:checked')?.value === 'post';
+  let postal = isPost ? 9.90 : 0;
+  let total = base + extra + postal;
+  let detail = t.price_detail;
+  if (familyCount > 0) detail += t.price_extra_family;
+  if (isPost) detail += t.price_extra_post;
+  document.getElementById('totalPrice').textContent = '€' + total.toFixed(2).replace('.',',');
+  document.getElementById('priceDetail').textContent = detail;
+}
+
+// Delivery method toggle
+document.querySelectorAll('input[name="deliveryMethod"]').forEach(r => {
+  r.addEventListener('change', () => {
+    document.getElementById('postalAddressField').style.display = r.value === 'post' && r.checked ? 'block' : 'none';
+    updatePrice();
+  });
+});
+
+// ── Form Submit ──
+document.getElementById('abmeldungForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  // Validate
+  let valid = true;
+  this.querySelectorAll('[required]').forEach(inp => {
+    if (!inp.value || (inp.type === 'radio' && !document.querySelector('input[name="'+inp.name+'"]:checked'))) {
+      inp.classList.add('error');
+      const msg = inp.closest('.field')?.querySelector('.error-msg');
+      if (msg) msg.style.display = 'block';
+      valid = false;
+    } else {
+      inp.classList.remove('error');
+      const msg = inp.closest('.field')?.querySelector('.error-msg');
+      if (msg) msg.style.display = 'none';
+    }
+  });
+  // Gender radio check
+  if (!document.querySelector('input[name="gender"]:checked')) {
+    valid = false;
+  }
+  // PLZ check
+  const plz = this.plz.value.trim();
+  if (!PLZ_MAP[plz]) {
+    this.plz.classList.add('error');
+    valid = false;
+  }
+  // Email check
+  if (this.email.value && !/^[^@]+@[^@]+\.[^@]+$/.test(this.email.value)) {
+    this.email.classList.add('error');
+    valid = false;
+  }
+  // Consent
+  if (!document.getElementById('consentCheck').checked) {
+    alert((I18N[currentLang] || I18N.de).err_consent);
+    valid = false;
+  }
+  if (!valid) return;
+
+  // Collect data
+  const fm = new FormData(this);
+  const familyMembers = [];
+  for (let i = 1; i <= 2; i++) {
+    const n = fm.get('famName'+i);
+    if (n) familyMembers.push({ name: n, dob: fm.get('famDob'+i)||'', nationality: fm.get('famNat'+i)||'' });
+  }
+  const deliveryMethod = fm.get('deliveryMethod') || 'email';
+  const isPost = deliveryMethod === 'post';
+  const totalPrice = 99 + (familyMembers.length * 49) + (isPost ? 9.90 : 0);
+
+  const payload = {
+    firstName: fm.get('firstName'),
+    lastName: fm.get('lastName'),
+    dob: fm.get('dob'),
+    birthPlace: fm.get('birthPlace'),
+    nationality: fm.get('nationality'),
+    gender: document.querySelector('input[name="gender"]:checked').value,
+    street: fm.get('street'),
+    plz: fm.get('plz'),
+    bezirk: PLZ_MAP[plz] || '',
+    moveOutDate: fm.get('moveOutDate'),
+    newStreet: fm.get('newStreet'),
+    newPlzCity: fm.get('newPlzCity'),
+    newCountry: fm.get('newCountry'),
+    email: fm.get('email'),
+    phone: fm.get('phone'),
+    deliveryMethod,
+    postalAddress: fm.get('postalAddress') || '',
+    familyMembers,
+    notes: fm.get('notes') || '',
+    totalPrice,
+    language: currentLang,
+  };
+
+  // Submit
+  document.getElementById('loadingOverlay').classList.add('show');
+  try {
+    const resp = await fetch('/api/submit-abmeldung', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Server error');
+    document.getElementById('formView').style.display = 'none';
+    document.getElementById('successView').style.display = 'block';
+    document.getElementById('successOrderId').textContent = data.orderId || '';
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    document.getElementById('loadingOverlay').classList.remove('show');
+  }
+});
+
+// Clear error on input
+document.querySelectorAll('.field input, .field select, .field textarea').forEach(inp => {
+  inp.addEventListener('input', () => {
+    inp.classList.remove('error');
+    const msg = inp.closest('.field')?.querySelector('.error-msg');
+    if (msg) msg.style.display = 'none';
+  });
+});
+</script>
+</body>
+</html>

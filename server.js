@@ -60,6 +60,11 @@ app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard.html'));
 });
 
+// ── Landing page: RAFER Easy Abmeldung ──────────────────────────────────────
+app.get('/abmeldung', (req, res) => {
+  res.sendFile(path.join(__dirname, 'abmeldung.html'));
+});
+
 // ── Auth endpoints ──────────────────────────────────────────────────────────
 app.post('/api/login', (req, res) => {
   const { password } = req.body || {};
@@ -335,6 +340,86 @@ app.post('/api/cases/:orderId/send-followup', authMiddleware, async (req, res) =
     res.json({ ok: true, to: result.to, bezirk: result.bezirk });
   } catch (err) {
     console.error('API send-followup error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Landing page: submit Abmeldung request ──────────────────────────────────
+app.post('/api/submit-abmeldung', async (req, res) => {
+  try {
+    const d = req.body || {};
+    // Validate required fields
+    const required = ['firstName','lastName','dob','birthPlace','nationality','gender','street','plz','bezirk','moveOutDate','newStreet','newPlzCity','newCountry','email','phone'];
+    for (const f of required) {
+      if (!d[f]) return res.status(400).json({ error: 'Missing field: ' + f });
+    }
+
+    // Generate order ID
+    const orderId = 'AB' + Date.now() + Math.random().toString(36).substr(2, 5).toUpperCase();
+
+    // Build session-like object for SharePoint
+    const session = {
+      lang: d.language || 'de',
+      chatId: '',
+      data: {
+        orderId,
+        firstName: d.firstName,
+        lastName: d.lastName,
+        dob: d.dob,
+        birthPlace: d.birthPlace,
+        nationality: d.nationality,
+        gender: d.gender,
+        fullAddress: d.street + ', ' + d.plz + ' Berlin',
+        bezirk: d.bezirk,
+        moveOutDate: d.moveOutDate,
+        newFullAddress: d.newStreet + ', ' + d.newPlzCity + ', ' + d.newCountry,
+        email: d.email,
+        phone: d.phone,
+        service: 'full',
+        deliveryMethod: d.deliveryMethod || 'email',
+        postalAddress: d.postalAddress || '',
+        postalFee: d.deliveryMethod === 'post' ? 9.90 : 0,
+        totalPrice: d.totalPrice || 99,
+        familyMembers: d.familyMembers || [],
+      },
+    };
+
+    // Create case in SharePoint
+    if (SP.isConfigured()) {
+      await SP.createCaseFolder(orderId);
+      await SP.createLedgerEntry(session, {});
+      // Set status to awaiting_signature (web submission — no docs yet)
+      await SP.updateCaseStatus(orderId, 'awaiting_signature',
+        'Web-Formular eingegangen am ' + new Date().toLocaleDateString('de-DE') +
+        (d.notes ? ' | Anmerkung: ' + d.notes.substring(0, 200) : '') +
+        ' | Sprache: ' + (d.language || 'de'));
+    }
+
+    // Notify admin via Telegram
+    const tgBot = req.app.get('telegramBot');
+    const adminId = process.env.ADMIN_CHAT_ID;
+    if (tgBot && adminId) {
+      const familyInfo = (d.familyMembers && d.familyMembers.length > 0)
+        ? '\n👨‍👩‍👧 Familienmitglieder: ' + d.familyMembers.length
+        : '';
+      const msg = '🌐 Neue Web-Abmeldung!\n' +
+        '👤 ' + d.firstName + ' ' + d.lastName + '\n' +
+        '📧 ' + d.email + '\n' +
+        '📞 ' + d.phone + '\n' +
+        '🏠 ' + d.street + ', ' + d.plz + ' (' + d.bezirk + ')\n' +
+        '📅 Auszug: ' + d.moveOutDate + '\n' +
+        '🌍 → ' + d.newCountry + '\n' +
+        '💰 €' + (d.totalPrice || 99) + ' (Full Service)' +
+        familyInfo + '\n' +
+        '📋 ' + orderId + '\n' +
+        '⏳ Status: awaiting_signature';
+      try { await tgBot.telegram.sendMessage(adminId, msg); } catch (e) { console.log('Admin TG notify error:', e.message); }
+    }
+
+    console.log('🌐 Web submission: ' + orderId + ' — ' + d.firstName + ' ' + d.lastName + ' (' + d.email + ')');
+    res.json({ ok: true, orderId });
+  } catch (err) {
+    console.error('API submit-abmeldung error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

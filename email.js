@@ -145,6 +145,69 @@ async function sendAbmeldungEmail(toEmail, pdfPath, session, buildIdPdf) {
 // ─── sendToBuergeramt ─────────────────────────────────────────────────────
 // Sends formal Abmeldung submission email to the Bürgeramt on behalf of client
 // ───────────────────────────────────────────────────────────────────────────
+// ─── buildIdPdfFromBase64 ─────────────────────────────────────────────────
+// Converts base64 ID images (front + optional back) into a single PDF
+// Uses PyMuPDF (fitz)
+// ──────────────────────────────────────────────────────────────────────────
+const { execFileSync } = require('child_process');
+
+function _getPyEnv() {
+  const BOT_DIR = __dirname;
+  const localPkgDir = require('path').join(BOT_DIR, '.python_packages');
+  const persistentPkgDir = '/home/python_packages';
+  return { ...process.env, PYTHONPATH: [persistentPkgDir, localPkgDir, process.env.PYTHONPATH || ''].filter(Boolean).join(':') };
+}
+
+async function buildIdPdfFromBase64(frontB64, backB64, orderId) {
+  if (!frontB64) return null;
+  const tmpDir = require('path').join(__dirname, 'pdfs');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const frontPath = require('path').join(tmpDir, 'id_front_' + orderId + '.jpg');
+  const backPath = require('path').join(tmpDir, 'id_back_' + orderId + '.jpg');
+  const outPath = require('path').join(tmpDir, 'Ausweis_' + orderId + '.pdf');
+  fs.writeFileSync(frontPath, Buffer.from(frontB64, 'base64'));
+  const imgPaths = [frontPath];
+  if (backB64) {
+    fs.writeFileSync(backPath, Buffer.from(backB64, 'base64'));
+    imgPaths.push(backPath);
+  }
+  const pyCode = [
+    'import sys, fitz',
+    'args = sys.argv[1:]',
+    'out = args[-1]',
+    'imgs = args[:-1]',
+    'doc = fitz.open()',
+    'for img_path in imgs:',
+    '    page = doc.new_page(width=595, height=842)',
+    '    margin = 20',
+    '    pix = fitz.Pixmap(img_path)',
+    '    iw, ih = pix.width, pix.height',
+    '    aw = 595 - 2*margin',
+    '    ah = 842 - 2*margin',
+    '    scale = min(aw/iw, ah/ih)',
+    '    w, h = iw*scale, ih*scale',
+    '    x0 = margin + (aw-w)/2',
+    '    y0 = margin + (ah-h)/2',
+    '    rect = fitz.Rect(x0, y0, x0+w, y0+h)',
+    '    page.insert_image(rect, filename=img_path, keep_proportion=False)',
+    'doc.save(out)',
+    "print('OK')",
+  ].join('\n');
+  const scriptPath = require('path').join(tmpDir, 'build_id_' + orderId + '.py');
+  fs.writeFileSync(scriptPath, pyCode);
+  const PYTHON3 = process.env.PYTHON_PATH || 'python3';
+  try {
+    execFileSync(PYTHON3, [scriptPath, ...imgPaths, outPath], { timeout: 30000, env: _getPyEnv(), stdio: 'pipe' });
+    const pdfB64 = fs.readFileSync(outPath).toString('base64');
+    [scriptPath, frontPath, backPath, outPath].forEach(f => { try { fs.unlinkSync(f); } catch(_) {} });
+    console.log('✅ ID PDF built for ' + orderId + ' (' + imgPaths.length + ' images)');
+    return pdfB64;
+  } catch (e) {
+    [scriptPath, frontPath, backPath, outPath].forEach(f => { try { fs.unlinkSync(f); } catch(_) {} });
+    throw e;
+  }
+}
+
 const { getBezirkEmail } = require('./bezirk_emails');
 
 async function sendToBuergeramt(caseData, opts = {}) {
@@ -257,13 +320,24 @@ async function sendToBuergeramt(caseData, opts = {}) {
   if (vollmachtB64) {
     attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Vollmacht_' + orderId + '.pdf', contentType: 'application/pdf', contentBytes: vollmachtB64 });
   }
+  // Build ID PDF from front + back images
   const idFrontB64 = await spFileToBase64(caseData.IdFrontUrl, 'id_frente.jpg');
-  if (idFrontB64) {
-    attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_vorne_' + orderId + '.jpg', contentType: 'image/jpeg', contentBytes: idFrontB64 });
-  }
   const idBackB64 = await spFileToBase64(caseData.IdBackUrl, 'id_verso.jpg');
-  if (idBackB64) {
-    attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_hinten_' + orderId + '.jpg', contentType: 'image/jpeg', contentBytes: idBackB64 });
+  if (idFrontB64) {
+    try {
+      const idPdfB64 = await buildIdPdfFromBase64(idFrontB64, idBackB64, orderId);
+      if (idPdfB64) {
+        attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_' + orderId + '.pdf', contentType: 'application/pdf', contentBytes: idPdfB64 });
+      } else {
+        // Fallback: attach as JPG if PDF conversion fails
+        attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_vorne_' + orderId + '.jpg', contentType: 'image/jpeg', contentBytes: idFrontB64 });
+        if (idBackB64) attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_hinten_' + orderId + '.jpg', contentType: 'image/jpeg', contentBytes: idBackB64 });
+      }
+    } catch (idErr) {
+      console.error('⚠️ ID PDF build error, falling back to JPG:', idErr.message);
+      attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_vorne_' + orderId + '.jpg', contentType: 'image/jpeg', contentBytes: idFrontB64 });
+      if (idBackB64) attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_hinten_' + orderId + '.jpg', contentType: 'image/jpeg', contentBytes: idBackB64 });
+    }
   }
 
   if (attachments.length === 0) {

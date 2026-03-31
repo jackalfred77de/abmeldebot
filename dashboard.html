@@ -994,7 +994,7 @@ function renderSidebar(c) {
     <div class="action-buttons">
       ${(c.Status === 'awaiting_signature') ? '<button class="btn-action" style="background:#6a1b9a;color:#fff;" onclick="showProcessForm()">🔄 Verarbeiten (PDFs generieren)</button>' : ''}
       <button class="btn-action btn-submit" onclick="updateStatus('submitted_to_behoerde')" ${isFinal ? 'disabled' : ''}>📤 Einreichen</button>
-      ${(c.Service === 'full' && c.Status === 'submitted_to_behoerde') ? '<button class="btn-action" style="background:#0369a1;color:#fff;" onclick="previewAmtEmail()">📬 An Bürgeramt senden</button>' : ''}
+      ${(c.Service === 'full' && (c.Status === 'submitted_to_behoerde' || c.Status === 'pdf_generated')) ? '<button class="btn-action" style="background:#0369a1;color:#fff;" onclick="previewAmtEmail()">📬 An Bürgeramt senden</button>' : ''}
       ${(c.Status === 'sent_to_amt') ? '<button class="btn-action" style="background:#065f46;color:#fff;" onclick="triggerUploadBestaetigung()">📎 Bestätigung hochladen</button>' : ''}
       ${(c.Status === 'confirmation_overdue' || c.Status === 'sent_to_amt') ? '<button class="btn-action" style="background:#c62828;color:#fff;" onclick="sendFollowUp()">📧 Nachfass-Email senden</button>' : ''}
       ${(c.Status === 'confirmation_received') ? '<button class="btn-action" style="background:#065f46;color:#fff;" onclick="sendBestaetigung()">📧 Per Email senden</button>' : ''}

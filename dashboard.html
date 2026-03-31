@@ -253,6 +253,7 @@ tbody td {
   font-weight: 600;
   letter-spacing: 0.2px;
 }
+.badge-awaiting_signature { background: #fff3e0; color: #e65100; }
 .badge-created { background: var(--purple-bg); color: var(--purple); }
 .badge-pdf_generated { background: var(--purple-bg); color: var(--purple); }
 .badge-email_sent { background: var(--blue-bg); color: var(--blue); }
@@ -589,6 +590,7 @@ tbody td {
     <div class="filters">
       <select id="filterStatus" onchange="applyFilters()">
         <option value="">Alle Status</option>
+        <option value="awaiting_signature">Awaiting Signature</option>
         <option value="created">Created</option>
         <option value="pdf_generated">PDF Generated</option>
         <option value="email_sent">Email Sent</option>
@@ -696,7 +698,7 @@ function shortDate(iso) {
 
 function statusLabel(s) {
   const map = {
-    created: 'Created', pdf_generated: 'PDF Generated', email_sent: 'Email Sent',
+    awaiting_signature: 'Awaiting Signature', created: 'Created', pdf_generated: 'PDF Generated', email_sent: 'Email Sent',
     pending_review: 'Pending Review', submitted_to_behoerde: 'Submitted', sent_to_amt: 'Sent to Amt',
     confirmation_received: 'Bestätigung erhalten', delivery_email_sent: 'Email zugestellt',
     delivery_post_pending: 'Post ausstehend', delivery_post_sent: 'Post versendet', completed: 'Completed',
@@ -990,6 +992,7 @@ function renderSidebar(c) {
   const isFinal = ['completed','cancelled','delivery_email_sent','delivery_post_sent'].includes(c.Status);
   $('sidebarActions').innerHTML = `
     <div class="action-buttons">
+      ${(c.Status === 'awaiting_signature') ? '<button class="btn-action" style="background:#6a1b9a;color:#fff;" onclick="showProcessForm()">🔄 Verarbeiten (PDFs generieren)</button>' : ''}
       <button class="btn-action btn-submit" onclick="updateStatus('submitted_to_behoerde')" ${isFinal ? 'disabled' : ''}>📤 Einreichen</button>
       ${(c.Service === 'full' && c.Status === 'submitted_to_behoerde') ? '<button class="btn-action" style="background:#0369a1;color:#fff;" onclick="previewAmtEmail()">📬 An Bürgeramt senden</button>' : ''}
       ${(c.Status === 'sent_to_amt') ? '<button class="btn-action" style="background:#065f46;color:#fff;" onclick="triggerUploadBestaetigung()">📎 Bestätigung hochladen</button>' : ''}
@@ -1157,6 +1160,74 @@ async function markAsPosted() {
     await fetchCases();
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+// ── PROCESS WEB CASE (upload docs + generate PDFs) ──
+function showProcessForm() {
+  if (!selectedOrderId) return;
+  const c = allCases.find(x => x.Title === selectedOrderId);
+  if (!c) return;
+  const html = `
+    <div style="padding:16px;background:var(--purple-bg);border-radius:var(--radius);margin-bottom:16px">
+      <div style="font-weight:600;font-size:14px;color:var(--purple);margin-bottom:8px">🔄 Fall verarbeiten: ${esc(c.ClientName || c.Title)}</div>
+      <div style="font-size:12px;color:var(--text-muted)">Dokumente hochladen und PDFs generieren (Abmeldung + Vollmacht)</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">✍️ Unterschrift (Bild) *</label>
+        <input type="file" id="processSignature" accept="image/*" style="font-size:12px;width:100%">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">🪨 Ausweis Vorderseite *</label>
+        <input type="file" id="processIdFront" accept="image/*,.pdf" style="font-size:12px;width:100%">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">🪨 Ausweis R\u00fcckseite (optional)</label>
+        <input type="file" id="processIdBack" accept="image/*,.pdf" style="font-size:12px;width:100%">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn-action" style="background:var(--purple);color:#fff;flex:1" onclick="processWebCase()" id="processBtn">📄 PDFs generieren & hochladen</button>
+        <button class="btn-action" style="background:var(--gray);color:#fff" onclick="fetchCases()">Abbrechen</button>
+      </div>
+      <div id="processStatus" style="font-size:12px;color:var(--text-muted);min-height:20px"></div>
+    </div>
+  `;
+  $('sidebarContent').innerHTML = html;
+}
+
+async function processWebCase() {
+  if (!selectedOrderId) return;
+  const sigInput = $('processSignature');
+  const idFrontInput = $('processIdFront');
+  const idBackInput = $('processIdBack');
+  if (!sigInput.files[0]) { showToast('Unterschrift ist erforderlich', 'error'); return; }
+  if (!idFrontInput.files[0]) { showToast('Ausweis Vorderseite ist erforderlich', 'error'); return; }
+  const btn = $('processBtn');
+  const status = $('processStatus');
+  btn.disabled = true;
+  btn.textContent = '⏳ Verarbeite...';
+  status.textContent = 'PDFs werden generiert und hochgeladen...';
+  try {
+    const formData = new FormData();
+    formData.append('signature', sigInput.files[0]);
+    formData.append('idFront', idFrontInput.files[0]);
+    if (idBackInput.files[0]) formData.append('idBack', idBackInput.files[0]);
+    const res = await fetch('/api/cases/' + selectedOrderId + '/process', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + TOKEN },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Verarbeitung fehlgeschlagen');
+    showToast('\u2705 PDFs generiert und hochgeladen! Status: pdf_generated');
+    status.textContent = '\u2705 Fertig! PDFs generiert und in SharePoint hochgeladen.';
+    await fetchCases();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+    status.textContent = '\u274c Fehler: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = '\ud83d\udcc4 PDFs generieren & hochladen';
   }
 }
 

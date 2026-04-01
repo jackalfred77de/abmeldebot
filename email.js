@@ -162,13 +162,20 @@ async function buildIdPdfFromBase64(frontB64, backB64, orderId) {
   if (!frontB64) return null;
   const tmpDir = require('path').join(__dirname, 'pdfs');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  const frontPath = require('path').join(tmpDir, 'id_front_' + orderId + '.jpg');
-  const backPath = require('path').join(tmpDir, 'id_back_' + orderId + '.jpg');
+  // Detect image format from content (magic bytes) instead of assuming JPEG
+  const frontBuf = Buffer.from(frontB64, 'base64');
+  const frontIsPng = frontBuf[0] === 0x89 && frontBuf.toString('utf8', 1, 4) === 'PNG';
+  const frontExt = frontIsPng ? '.png' : '.jpg';
+  const frontPath = require('path').join(tmpDir, 'id_front_' + orderId + frontExt);
+  let backPath = require('path').join(tmpDir, 'id_back_' + orderId + '.jpg');
   const outPath = require('path').join(tmpDir, 'Ausweis_' + orderId + '.pdf');
-  fs.writeFileSync(frontPath, Buffer.from(frontB64, 'base64'));
+  fs.writeFileSync(frontPath, frontBuf);
   const imgPaths = [frontPath];
   if (backB64) {
-    fs.writeFileSync(backPath, Buffer.from(backB64, 'base64'));
+    const backBuf = Buffer.from(backB64, 'base64');
+    const backIsPng = backBuf[0] === 0x89 && backBuf.toString('utf8', 1, 4) === 'PNG';
+    if (backIsPng) backPath = require('path').join(tmpDir, 'id_back_' + orderId + '.png');
+    fs.writeFileSync(backPath, backBuf);
     imgPaths.push(backPath);
   }
   const pyCode = [
@@ -213,15 +220,21 @@ const { getBezirkEmail } = require('./bezirk_emails');
 async function sendToBuergeramt(caseData, opts = {}) {
   const { dryRun = false } = opts;
   const bezirk = caseData.Bezirk || '';
-  const amtEmail = getBezirkEmail(bezirk);
+  let amtEmail = getBezirkEmail(bezirk);
+  // TEST_MODE: override destination to prevent accidental Bürgeramt emails
+  const testDest = process.env.TEST_EMAIL_DEST;
+  if (process.env.TEST_MODE === 'true' && testDest) {
+    console.log('⚠️  TEST_MODE: Redirecting Bürgeramt email from ' + amtEmail + ' → ' + testDest);
+    amtEmail = testDest;
+  }
   if (!amtEmail) {
     return { success: false, error: 'Kein B\u00fcrgeramt-Email f\u00fcr Bezirk "' + bezirk + '" gefunden' };
   }
   const orderId    = caseData.Title || '';
   const clientName = caseData.ClientName || '';
-  const nameParts  = clientName.split(' ');
-  const firstName  = nameParts[0] || '';
-  const lastName   = nameParts.slice(1).join(' ') || '';
+  // Use explicit first/last name fields if available, else split smartly
+  const firstName  = caseData.ClientFirstName || clientName.split(' ')[0] || '';
+  const lastName   = caseData.ClientLastName || clientName.split(' ').slice(1).join(' ') || '';
   const gender     = caseData.Gender || '';
   const address    = caseData.BerlinAddress || '';
   const moveOut    = caseData.MoveOutDate || '';
@@ -321,8 +334,13 @@ async function sendToBuergeramt(caseData, opts = {}) {
     attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Vollmacht_' + orderId + '.pdf', contentType: 'application/pdf', contentBytes: vollmachtB64 });
   }
   // Build ID PDF from front + back images
-  const idFrontB64 = await spFileToBase64(caseData.IdFrontUrl, 'id_frente.jpg');
-  const idBackB64 = await spFileToBase64(caseData.IdBackUrl, 'id_verso.jpg');
+  // Try to detect extension from SP URL, fallback to trying both
+  const idFrontExt = (caseData.IdFrontUrl || '').match(/\.(png|jpg|jpeg)$/i)?.[0] || '.jpg';
+  const idFrontFallback = 'Ausweis_' + orderId + idFrontExt;
+  const idFrontB64 = await spFileToBase64(caseData.IdFrontUrl, idFrontFallback);
+  const idBackExt = (caseData.IdBackUrl || '').match(/\.(png|jpg|jpeg)$/i)?.[0] || '.jpg';
+  const idBackFallback = 'Ausweis_hinten_' + orderId + idBackExt;
+  const idBackB64 = await spFileToBase64(caseData.IdBackUrl, idBackFallback);
   if (idFrontB64) {
     try {
       const idPdfB64 = await buildIdPdfFromBase64(idFrontB64, idBackB64, orderId);
@@ -330,13 +348,28 @@ async function sendToBuergeramt(caseData, opts = {}) {
         attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_' + orderId + '.pdf', contentType: 'application/pdf', contentBytes: idPdfB64 });
       } else {
         // Fallback: attach as JPG if PDF conversion fails
-        attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_vorne_' + orderId + '.jpg', contentType: 'image/jpeg', contentBytes: idFrontB64 });
-        if (idBackB64) attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_hinten_' + orderId + '.jpg', contentType: 'image/jpeg', contentBytes: idBackB64 });
+        // Detect image type from base64 content
+        const frontBuf4 = Buffer.from(idFrontB64.substring(0, 20), 'base64');
+        const frontIsPng4 = frontBuf4[0] === 0x89 && frontBuf4.toString('utf8', 1, 4) === 'PNG';
+        const frontCT = frontIsPng4 ? 'image/png' : 'image/jpeg';
+        const frontExt4 = frontIsPng4 ? '.png' : '.jpg';
+        attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_vorne_' + orderId + frontExt4, contentType: frontCT, contentBytes: idFrontB64 });
+        if (idBackB64) {
+          const backBuf4 = Buffer.from(idBackB64.substring(0, 20), 'base64');
+          const backIsPng4 = backBuf4[0] === 0x89 && backBuf4.toString('utf8', 1, 4) === 'PNG';
+          const backCT = backIsPng4 ? 'image/png' : 'image/jpeg';
+          const backExt4 = backIsPng4 ? '.png' : '.jpg';
+          attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_hinten_' + orderId + backExt4, contentType: backCT, contentBytes: idBackB64 });
+        }
       }
     } catch (idErr) {
-      console.error('⚠️ ID PDF build error, falling back to JPG:', idErr.message);
-      attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_vorne_' + orderId + '.jpg', contentType: 'image/jpeg', contentBytes: idFrontB64 });
-      if (idBackB64) attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_hinten_' + orderId + '.jpg', contentType: 'image/jpeg', contentBytes: idBackB64 });
+      console.error('⚠️ ID PDF build error, falling back to image:', idErr.message);
+      const fb4 = Buffer.from(idFrontB64.substring(0,20),'base64');
+      const fpng4 = fb4[0]===0x89 && fb4.toString('utf8',1,4)==='PNG';
+      const fct4 = fpng4 ? 'image/png' : 'image/jpeg';
+      const fex4 = fpng4 ? '.png' : '.jpg';
+      attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_vorne_' + orderId + fex4, contentType: fct4, contentBytes: idFrontB64 });
+      if (idBackB64) { const bb4=Buffer.from(idBackB64.substring(0,20),'base64'); const bpng4=bb4[0]===0x89&&bb4.toString('utf8',1,4)==='PNG'; const bct4=bpng4?'image/png':'image/jpeg'; const bex4=bpng4?'.png':'.jpg'; attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_hinten_' + orderId + bex4, contentType: bct4, contentBytes: idBackB64 }); }
     }
   }
 

@@ -780,6 +780,34 @@ bot.on('text', async (ctx) => {
     }
   }
   switch (session.step) {
+    case 'language': {
+      const norm = text.toLowerCase().trim();
+      const langMap = {
+        '1': 'de', 'de': 'de', 'deutsch': 'de', 'german': 'de', 'alemão': 'de', 'alemao': 'de', '🇩🇪': 'de',
+        '2': 'pt', 'pt': 'pt', 'português': 'pt', 'portugues': 'pt', 'portuguese': 'pt', '🇧🇷': 'pt', '🇵🇹': 'pt',
+        '3': 'en', 'en': 'en', 'english': 'en', 'inglés': 'en', 'ingles': 'en', 'inglês': 'en', '🇬🇧': 'en', '🇺🇸': 'en',
+      };
+      const chosen = langMap[norm];
+      if (!chosen) {
+        await ctx.reply(
+          '🇩🇪 Bitte tippen Sie 1, 2 oder 3 — oder tippen Sie auf einen Sprach-Button.\n' +
+          '🇧🇷 Por favor, digite 1, 2 ou 3 — ou toque em um botão de idioma.\n' +
+          '🇬🇧 Please type 1, 2 or 3 — or tap a language button.',
+          Markup.inlineKeyboard([
+            [Markup.button.callback('1 · 🇩🇪 Deutsch', 'lang_de')],
+            [Markup.button.callback('2 · 🇧🇷 Português', 'lang_pt')],
+            [Markup.button.callback('3 · 🇬🇧 English', 'lang_en')],
+          ])
+        );
+        break;
+      }
+      session.lang = chosen; session.step = 'service';
+      await ctx.reply(t(session, 'service_select'), Markup.inlineKeyboard([
+        [Markup.button.callback('📝 DIY - €4.90', 'service_diy')],
+        [Markup.button.callback('🎯 Full Service - €39.90', 'service_full')],
+      ]));
+      break;
+    }
     case 'firstname': session.data.firstName = text; session.step = 'lastname'; await ctx.reply(t(session, 'ask_lastname'), { parse_mode: 'Markdown' }); break;
     case 'lastname': session.data.lastName = text; session.step = 'birthdate'; await ctx.reply(t(session, 'ask_birthdate')); break;
     case 'birthdate': if (!isValidDate(text)) { await ctx.reply(t(session, 'invalid_date')); return; } session.data.birthDate = text; session.step = 'birthplace'; await ctx.reply(t(session, 'ask_birthplace')); break;
@@ -801,9 +829,17 @@ bot.on('text', async (ctx) => {
     case 'family_gender': session.data._tempFamilyGender = text; session.step = 'family_nationality'; { const memberNum = session.data.familyMembers.length + 1; const natText = t(session, 'ask_family_nationality').replace('{n}', memberNum); const buttons = session.data.nationality ? Markup.inlineKeyboard([[Markup.button.callback(t(session, 'family_same_nationality') + ` (${session.data.nationality})`, 'fnat_same')]]) : undefined; await ctx.reply(natText, buttons); } break;
     case 'family_nationality': { if (!session.data.familyMembers) session.data.familyMembers = []; const natVal = normalizeNationality(text); session.data.familyMembers.push({ raw: session.data._tempFamilyRaw, gender: session.data._tempFamilyGender || '', nationality: natVal, birthPlace: session.data._tempFamilyBirthPlace || '', birthCountry: session.data._tempFamilyBirthCountry || '' }); delete session.data._tempFamilyRaw; delete session.data._tempFamilyGender; delete session.data._tempFamilyBirthPlace; delete session.data._tempFamilyBirthCountry; await askFamilyDocType(ctx, session); } break;
     default: {
-      if (session.step && !['language','service','consent','done','gender','wohnungtyp','delivery_method','signature','id_front','id_back','anmeldung','family_doc_front','family_doc_back','vollmacht_return','admin_upload_bestaetigung','family_gender'].includes(session.step)) {
+      const lang = (session && session.lang) || 'de';
+      const BUTTON_STEPS = ['service','consent','gender','wohnungtyp','delivery_method','family_gender'];
+      const PHOTO_STEPS  = ['signature','id_front','id_back','anmeldung','family_doc_front','family_doc_back','vollmacht_return','admin_upload_bestaetigung'];
+      if (BUTTON_STEPS.includes(session.step)) {
+        const msgs = { de: '👆 Bitte tippen Sie auf einen der Buttons oben.', pt: '👆 Por favor, toque em um dos botões acima.', en: '👆 Please tap one of the buttons above.' };
+        await ctx.reply(msgs[lang] || msgs.de);
+      } else if (PHOTO_STEPS.includes(session.step)) {
+        const msgs = { de: '📷 Bitte senden Sie ein Foto oder PDF (kein Text).', pt: '📷 Por favor, envie uma foto ou PDF (não texto).', en: '📷 Please send a photo or PDF (not text).' };
+        await ctx.reply(msgs[lang] || msgs.de);
+      } else if (session.step && session.step !== 'done') {
         console.log('⚠️ Unhandled text step [chat=' + ctx.chat.id + ', step=' + session.step + ']: ' + text.substring(0, 50));
-        const lang = (session && session.lang) || 'de';
         const msgs = { de: '⚠️ Sitzung verloren. Bitte /start erneut.', pt: '⚠️ Sessão perdida. Por favor, /start novamente.', en: '⚠️ Session lost. Please /start again.' };
         await ctx.reply(msgs[lang] || msgs.de);
       }

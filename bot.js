@@ -145,11 +145,15 @@ async function notifyAdmin(session) {
 bot.command('start', (ctx) => {
   sessions.delete(ctx.chat.id);
   const session = createSession(ctx.chat.id);
-  ctx.reply(translations.de.welcome, Markup.inlineKeyboard([
-    [Markup.button.callback('🇩🇪 Deutsch', 'lang_de')],
-    [Markup.button.callback('🇧🇷 Português', 'lang_pt')],
-    [Markup.button.callback('🇬🇧 English', 'lang_en')]
-  ]));
+  ctx.reply(translations.de.welcome, {
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true,
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback('1 · 🇩🇪 Deutsch', 'lang_de')],
+      [Markup.button.callback('2 · 🇧🇷 Português', 'lang_pt')],
+      [Markup.button.callback('3 · 🇬🇧 English', 'lang_en')],
+    ]),
+  });
 });
 
 bot.command('cancel', (ctx) => { const s = getSession(ctx.chat.id); deleteSession(ctx.chat.id); ctx.reply(t(s, 'cancel')); });

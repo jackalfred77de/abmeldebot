@@ -145,15 +145,23 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
       </div>
       <div class="row">
         <div class="field">
+          <label data-i18n="lbl_birthcountry">Geburtsland *</label>
+          <input type="text" name="birthCountry" required placeholder="z.B. Brasilien">
+          <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
+        </div>
+        <div class="field">
           <label data-i18n="lbl_nationality">Staatsangehörigkeit *</label>
           <input type="text" name="nationality" required placeholder="z.B. Brasilianisch">
           <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
         </div>
+      </div>
+      <div class="row">
         <div class="field">
           <label data-i18n="lbl_gender">Geschlecht *</label>
           <div class="radio-group">
             <label><input type="radio" name="gender" value="male" required><span data-i18n="opt_male">Männlich</span></label>
             <label><input type="radio" name="gender" value="female"><span data-i18n="opt_female">Weiblich</span></label>
+            <label><input type="radio" name="gender" value="divers"><span data-i18n="opt_diverse">Divers</span></label>
           </div>
           <div class="error-msg" data-i18n="err_required">Pflichtfeld</div>
         </div>
@@ -296,8 +304,8 @@ const I18N = {
     hero_sub:'Wir übernehmen Ihre Abmeldung beim Berliner Bürgeramt — schnell, sicher, durch einen Rechtsanwalt.',
     sec_personal:'Persönliche Daten',
     lbl_firstname:'Vorname *',lbl_lastname:'Nachname *',lbl_dob:'Geburtsdatum *',
-    lbl_birthplace:'Geburtsort *',lbl_nationality:'Staatsangehörigkeit *',lbl_gender:'Geschlecht *',
-    opt_male:'Männlich',opt_female:'Weiblich',
+    lbl_birthplace:'Geburtsort *',lbl_birthcountry:'Geburtsland *',lbl_nationality:'Staatsangehörigkeit *',lbl_gender:'Geschlecht *',
+    opt_male:'Männlich',opt_female:'Weiblich',opt_diverse:'Divers',
     sec_berlin:'Berliner Adresse (abzumelden)',
     lbl_street:'Straße und Hausnummer *',lbl_plz:'PLZ *',lbl_moveout:'Auszugsdatum *',
     sec_new:'Neue Adresse (nach der Abmeldung)',
@@ -310,6 +318,7 @@ const I18N = {
     family_hint:'Wenn Sie Familienmitglieder mitabmelden möchten, tragen Sie deren Daten hier ein. Max. 2 Personen.',
     btn_add_family:'+ Familienmitglied hinzufügen',
     fam_name:'Name *',fam_dob:'Geburtsdatum *',fam_nationality:'Staatsangehörigkeit',fam_remove:'Entfernen',
+    fam_gender:'Geschlecht *',fam_birthplace:'Geburtsort *',fam_birthcountry:'Geburtsland *',
     sec_notes:'Anmerkungen',notes_placeholder:'Optionale Hinweise oder Fragen',
     price_label:'Gesamtpreis (Full Service)',
     price_detail:'Abmeldung durch Rechtsanwalt inkl. Einreichung beim Bürgeramt',
@@ -329,8 +338,8 @@ const I18N = {
     hero_sub:'We handle your Berlin deregistration at the Bürgeramt — fast, secure, handled by a lawyer.',
     sec_personal:'Personal Information',
     lbl_firstname:'First name *',lbl_lastname:'Last name *',lbl_dob:'Date of birth *',
-    lbl_birthplace:'Place of birth *',lbl_nationality:'Nationality *',lbl_gender:'Gender *',
-    opt_male:'Male',opt_female:'Female',
+    lbl_birthplace:'Place of birth *',lbl_birthcountry:'Country of birth *',lbl_nationality:'Nationality *',lbl_gender:'Gender *',
+    opt_male:'Male',opt_female:'Female',opt_diverse:'Diverse',
     sec_berlin:'Berlin address (to deregister)',
     lbl_street:'Street and house number *',lbl_plz:'Postal code *',lbl_moveout:'Move-out date *',
     sec_new:'New address (after deregistration)',
@@ -343,6 +352,7 @@ const I18N = {
     family_hint:'If you want to deregister family members as well, enter their details here. Max. 2 persons.',
     btn_add_family:'+ Add family member',
     fam_name:'Name *',fam_dob:'Date of birth *',fam_nationality:'Nationality',fam_remove:'Remove',
+    fam_gender:'Gender *',fam_birthplace:'Place of birth *',fam_birthcountry:'Country of birth *',
     sec_notes:'Notes',notes_placeholder:'Optional notes or questions',
     price_label:'Total price (Full Service)',
     price_detail:'Deregistration by a lawyer incl. submission to the Bürgeramt',
@@ -362,8 +372,8 @@ const I18N = {
     hero_sub:'Cuidamos da sua Abmeldung no Bürgeramt de Berlim — rápido, seguro, realizado por um advogado.',
     sec_personal:'Dados Pessoais',
     lbl_firstname:'Nome *',lbl_lastname:'Sobrenome *',lbl_dob:'Data de nascimento *',
-    lbl_birthplace:'Local de nascimento *',lbl_nationality:'Nacionalidade *',lbl_gender:'Sexo *',
-    opt_male:'Masculino',opt_female:'Feminino',
+    lbl_birthplace:'Local de nascimento *',lbl_birthcountry:'País de nascimento *',lbl_nationality:'Nacionalidade *',lbl_gender:'Sexo *',
+    opt_male:'Masculino',opt_female:'Feminino',opt_diverse:'Diverso',
     sec_berlin:'Endereço em Berlim (a cancelar)',
     lbl_street:'Rua e número *',lbl_plz:'PLZ *',lbl_moveout:'Data de saída *',
     sec_new:'Novo endereço (após o cancelamento)',
@@ -376,6 +386,7 @@ const I18N = {
     family_hint:'Se deseja cancelar familiares também, insira os dados aqui. Máx. 2 pessoas.',
     btn_add_family:'+ Adicionar familiar',
     fam_name:'Nome *',fam_dob:'Data de nascimento *',fam_nationality:'Nacionalidade',fam_remove:'Remover',
+    fam_gender:'Sexo *',fam_birthplace:'Local de nascimento *',fam_birthcountry:'País de nascimento *',
     sec_notes:'Observações',notes_placeholder:'Notas ou perguntas opcionais',
     price_label:'Preço total (Full Service)',
     price_detail:'Abmeldung por advogado incl. envio ao Bürgeramt',
@@ -474,7 +485,30 @@ function addFamilyMember() {
   div.className = 'family-member';
   div.id = 'fam-' + familyCount;
   div.style.cssText = 'border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:10px;background:var(--bg-card)';
-  div.innerHTML = '<div class="row"><div class="field"><label>'+t.fam_name+'</label><input type="text" name="famName'+familyCount+'" required></div><div class="field"><label>'+t.fam_dob+'</label><input type="date" name="famDob'+familyCount+'" required></div></div><div class="row"><div class="field"><label>'+t.fam_nationality+'</label><input type="text" name="famNat'+familyCount+'"></div><div class="field" style="display:flex;align-items:end"><button type="button" onclick="removeFamilyMember('+familyCount+')" style="font-size:12px;padding:8px 14px;border:1px solid var(--red);border-radius:var(--radius-sm);background:var(--red-bg);color:var(--red);cursor:pointer">'+t.fam_remove+'</button></div></div>';
+  const n = familyCount;
+  div.innerHTML =
+    '<div class="row">' +
+      '<div class="field"><label>'+t.fam_name+'</label><input type="text" name="famName'+n+'" required></div>' +
+      '<div class="field"><label>'+t.fam_dob+'</label><input type="date" name="famDob'+n+'" required></div>' +
+    '</div>' +
+    '<div class="row">' +
+      '<div class="field"><label>'+t.fam_birthplace+'</label><input type="text" name="famBirthPlace'+n+'" required></div>' +
+      '<div class="field"><label>'+t.fam_birthcountry+'</label><input type="text" name="famBirthCountry'+n+'" required></div>' +
+    '</div>' +
+    '<div class="row">' +
+      '<div class="field"><label>'+t.fam_nationality+'</label><input type="text" name="famNat'+n+'"></div>' +
+      '<div class="field"><label>'+t.fam_gender+'</label>' +
+        '<select name="famGender'+n+'" required>' +
+          '<option value="">—</option>' +
+          '<option value="male">'+t.opt_male+'</option>' +
+          '<option value="female">'+t.opt_female+'</option>' +
+          '<option value="divers">'+t.opt_diverse+'</option>' +
+        '</select>' +
+      '</div>' +
+    '</div>' +
+    '<div class="row"><div class="field" style="display:flex;align-items:end">' +
+      '<button type="button" onclick="removeFamilyMember('+n+')" style="font-size:12px;padding:8px 14px;border:1px solid var(--red);border-radius:var(--radius-sm);background:var(--red-bg);color:var(--red);cursor:pointer">'+t.fam_remove+'</button>' +
+    '</div></div>';
   document.getElementById('familyContainer').appendChild(div);
   if (familyCount >= 2) document.getElementById('addFamilyBtn').style.display = 'none';
   updatePrice();
@@ -554,7 +588,14 @@ document.getElementById('abmeldungForm').addEventListener('submit', async functi
   const familyMembers = [];
   for (let i = 1; i <= 2; i++) {
     const n = fm.get('famName'+i);
-    if (n) familyMembers.push({ name: n, dob: fm.get('famDob'+i)||'', nationality: fm.get('famNat'+i)||'' });
+    if (n) familyMembers.push({
+      name: n,
+      dob: fm.get('famDob'+i)||'',
+      nationality: fm.get('famNat'+i)||'',
+      gender: fm.get('famGender'+i)||'',
+      birthPlace: fm.get('famBirthPlace'+i)||'',
+      birthCountry: fm.get('famBirthCountry'+i)||'',
+    });
   }
   const deliveryMethod = fm.get('deliveryMethod') || 'email';
   const isPost = deliveryMethod === 'post';
@@ -565,6 +606,7 @@ document.getElementById('abmeldungForm').addEventListener('submit', async functi
     lastName: fm.get('lastName'),
     dob: fm.get('dob'),
     birthPlace: fm.get('birthPlace'),
+    birthCountry: fm.get('birthCountry'),
     nationality: fm.get('nationality'),
     gender: document.querySelector('input[name="gender"]:checked').value,
     street: fm.get('street'),

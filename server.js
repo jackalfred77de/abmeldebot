@@ -671,7 +671,7 @@ app.post('/api/submit-abmeldung', async (req, res) => {
       const abmeldungScript = path.join(BOT_DIR, 'fill_abmeldung.py');
       const abmeldungPayload = JSON.stringify({
         Nachname: d.lastName, Vorname: d.firstName, Geburtsname: '',
-        Geschlecht: d.gender || '', Geburtsdatum: d.dob || '', Geburtsort: d.birthPlace || '', Geburtsland: '',
+        Geschlecht: d.gender || '', Geburtsdatum: d.dob || '', Geburtsort: d.birthPlace || '', Geburtsland: d.birthCountry || '',
         Staatsangehoerigkeit: d.nationality || '', Strasse: session.data.fullAddress,
         PLZ: d.plz || '', Bezirk: d.bezirk || '', Auszugsdatum: d.moveOutDate || '',
         NeueStrasse: d.newStreet || '', NeuesLand: ((d.newPlzCity || '') + ' ' + (d.newCountry || '')).trim(),

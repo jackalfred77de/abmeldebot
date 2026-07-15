@@ -161,9 +161,9 @@ def build(data_json_str, output_path):
     MR = 45          # right margin
     MT = 45          # top margin
     PW = 595 - ML - MR   # 505 pts
+    GAP = 14         # column gap; also used by div_x below in both layouts
 
     if bilingual:
-        GAP = 14
         CW  = (PW - GAP) / 2   # ~245 pts
         LX  = ML                # left col x
         RX  = ML + CW + GAP     # right col x  (~304)

@@ -549,6 +549,13 @@ app.post('/api/cases/:orderId/send-documents', authMiddleware, async (req, res) 
   }
 });
 
+// <input type="date"> always posts ISO (yyyy-mm-dd); the Abmeldung form, the
+// Vollmacht and the SP ledger all expect TT.MM.JJJJ like the bot sends.
+function toGermanDate(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '').trim());
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : v;
+}
+
 // ── Landing page: submit Abmeldung request ──────────────────────────────────
 app.post('/api/submit-abmeldung', async (req, res) => {
   try {
@@ -557,6 +564,15 @@ app.post('/api/submit-abmeldung', async (req, res) => {
     const required = ['firstName','lastName','dob','birthPlace','nationality','gender','street','plz','bezirk','moveOutDate','newStreet','newPlzCity','newCountry','email','phone'];
     for (const f of required) {
       if (!d[f]) return res.status(400).json({ error: 'Missing field: ' + f });
+    }
+
+    // Normalise the date pickers' ISO values before anything consumes them
+    // (PDFs, SharePoint ledger, admin Telegram message).
+    d.dob = toGermanDate(d.dob);
+    d.moveOutDate = toGermanDate(d.moveOutDate);
+    if (Array.isArray(d.familyMembers)) {
+      d.familyMembers = d.familyMembers.map((m) =>
+        (m && typeof m === 'object') ? { ...m, dob: toGermanDate(m.dob) } : m);
     }
 
     // Generate order ID
@@ -636,6 +652,20 @@ app.post('/api/submit-abmeldung', async (req, res) => {
       const pdfsDir = path.join(BOT_DIR, 'pdfs');
       if (!fs.existsSync(pdfsDir)) fs.mkdirSync(pdfsDir, { recursive: true });
 
+      // The web form emits { name, dob, nationality }, but both PDF scripts read
+      // member.raw ("Name, Geburtsdatum") like the bot builds it — without this
+      // both silently drop every family member.
+      const familyMembersForPdf = (session.data.familyMembers || []).map((m) => {
+        if (!m || typeof m !== 'object' || m.raw) return m;
+        return {
+          raw: [m.name, m.dob].filter(Boolean).join(', '),
+          gender: m.gender || '',
+          nationality: m.nationality || '',
+          birthPlace: m.birthPlace || '',
+          birthCountry: m.birthCountry || '',
+        };
+      });
+
       // 1. Abmeldung PDF (unsigned — client signs the returned documents)
       const abmeldungOut = path.join(pdfsDir, 'Abmeldung_' + orderId + '.pdf');
       const abmeldungScript = path.join(BOT_DIR, 'fill_abmeldung.py');
@@ -647,7 +677,7 @@ app.post('/api/submit-abmeldung', async (req, res) => {
         NeueStrasse: d.newStreet || '', NeuesLand: ((d.newPlzCity || '') + ' ' + (d.newCountry || '')).trim(),
         BisherigWohnung: 'alleinige', NeueWohnungExistiert: 'nein',
         Datum: today, SignaturBase64: '',
-        FamilyMembers: session.data.familyMembers || [],
+        FamilyMembers: familyMembersForPdf,
       });
       await new Promise((resolve, reject) => {
         execFileCb(PYTHON3, [abmeldungScript, abmeldungPayload, abmeldungOut], { env: getPyEnv(), timeout: 30000 }, (err, stdout, stderr) => {
@@ -667,7 +697,7 @@ app.post('/api/submit-abmeldung', async (req, res) => {
           Vorname: d.firstName, Nachname: d.lastName, Bezirk: d.bezirk || 'Berlin', Datum: today,
           Geburtsdatum: d.dob || '', Adresse: session.data.fullAddress, AuszugDatum: d.moveOutDate || '',
           Language: session.lang, SignaturBase64: '',
-          FamilyMembers: session.data.familyMembers || [],
+          FamilyMembers: familyMembersForPdf,
         });
         try {
           execFileSync(PYTHON3, [vollmachtScript, vollmachtPayload, vollmachtOut], { env: getPyEnv(), timeout: 30000, stdio: 'pipe' });

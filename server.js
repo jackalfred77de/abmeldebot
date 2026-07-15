@@ -555,8 +555,100 @@ app.post('/api/submit-abmeldung', async (req, res) => {
       try { await tgBot.telegram.sendMessage(adminId, msg); } catch (e) { console.log('Admin TG notify error:', e.message); }
     }
 
+    // ── Generate Abmeldung (+ Vollmacht) PDFs and email them to the client ──────
+    let emailResult = { success: false };
+    try {
+      const { execFile: execFileCb, execFileSync } = require('child_process');
+      const PYTHON3 = process.env.PYTHON_PATH || 'python3';
+      const BOT_DIR = __dirname;
+      const getPyEnv = () => {
+        const localPkgDir = path.join(BOT_DIR, '.python_packages');
+        const persistentPkgDir = '/home/python_packages';
+        return { ...process.env, PYTHONPATH: [persistentPkgDir, localPkgDir, process.env.PYTHONPATH || ''].filter(Boolean).join(':') };
+      };
+      const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const pdfsDir = path.join(BOT_DIR, 'pdfs');
+      if (!fs.existsSync(pdfsDir)) fs.mkdirSync(pdfsDir, { recursive: true });
+
+      // 1. Abmeldung PDF (unsigned — client signs the returned documents)
+      const abmeldungOut = path.join(pdfsDir, 'Abmeldung_' + orderId + '.pdf');
+      const abmeldungScript = path.join(BOT_DIR, 'fill_abmeldung.py');
+      const abmeldungPayload = JSON.stringify({
+        Nachname: d.lastName, Vorname: d.firstName, Geburtsname: '',
+        Geschlecht: d.gender || '', Geburtsdatum: d.dob || '', Geburtsort: d.birthPlace || '', Geburtsland: '',
+        Staatsangehoerigkeit: d.nationality || '', Strasse: session.data.fullAddress,
+        PLZ: d.plz || '', Bezirk: d.bezirk || '', Auszugsdatum: d.moveOutDate || '',
+        NeueStrasse: d.newStreet || '', NeuesLand: ((d.newPlzCity || '') + ' ' + (d.newCountry || '')).trim(),
+        BisherigWohnung: 'alleinige', NeueWohnungExistiert: 'nein',
+        Datum: today, SignaturBase64: '',
+        FamilyMembers: session.data.familyMembers || [],
+      });
+      await new Promise((resolve, reject) => {
+        execFileCb(PYTHON3, [abmeldungScript, abmeldungPayload, abmeldungOut], { env: getPyEnv(), timeout: 30000 }, (err, stdout, stderr) => {
+          if (err) { console.error('fill_abmeldung.py error:', stderr); return reject(new Error(stderr || err.message)); }
+          if (stdout.startsWith('OK:')) resolve(abmeldungOut);
+          else reject(new Error(stdout || 'Unknown error'));
+        });
+      });
+      console.log('✅ Web submit: Abmeldung PDF generated:', abmeldungOut);
+
+      // 2. Vollmacht PDF (Full Service)
+      let vollmachtOut = null;
+      if (session.data.service === 'full') {
+        vollmachtOut = path.join(pdfsDir, 'Vollmacht_' + orderId + '.pdf');
+        const vollmachtScript = path.join(BOT_DIR, 'gen_vollmacht.py');
+        const vollmachtPayload = JSON.stringify({
+          Vorname: d.firstName, Nachname: d.lastName, Bezirk: d.bezirk || 'Berlin', Datum: today,
+          Geburtsdatum: d.dob || '', Adresse: session.data.fullAddress, AuszugDatum: d.moveOutDate || '',
+          Language: session.lang, SignaturBase64: '',
+          FamilyMembers: session.data.familyMembers || [],
+        });
+        try {
+          execFileSync(PYTHON3, [vollmachtScript, vollmachtPayload, vollmachtOut], { env: getPyEnv(), timeout: 30000, stdio: 'pipe' });
+          session._vollmachtPath = vollmachtOut;
+          console.log('✅ Web submit: Vollmacht PDF generated:', vollmachtOut);
+        } catch (ve) {
+          console.error('⚠️ Vollmacht gen error (non-fatal):', ve.message);
+          vollmachtOut = null;
+        }
+      }
+
+      // 3. Upload PDFs to SharePoint (non-fatal)
+      try {
+        if (SP.isConfigured() && fs.existsSync(abmeldungOut)) {
+          const spFields = { LastUpdated: new Date().toISOString() };
+          const abUrl = await SP.uploadFile(orderId, abmeldungOut, 'Abmeldung_' + orderId + '.pdf');
+          if (abUrl) spFields.AbmeldungUrl = abUrl;
+          if (vollmachtOut && fs.existsSync(vollmachtOut)) {
+            const voUrl = await SP.uploadFile(orderId, vollmachtOut, 'Vollmacht_' + orderId + '.pdf');
+            if (voUrl) spFields.VollmachtUrl = voUrl;
+          }
+          await SP.updateCaseField(orderId, spFields);
+        }
+      } catch (spErr) { console.error('⚠️ Web submit SP upload (non-fatal):', spErr.message); }
+
+      // 4. Email the documents to the client (reuses the bot-flow sender)
+      const { sendAbmeldungEmail } = require('./email');
+      emailResult = await sendAbmeldungEmail(session.data.email, abmeldungOut, session);
+      if (emailResult && emailResult.success) {
+        console.log('✅ Web submit: documents emailed to', session.data.email);
+        if (SP.isConfigured()) {
+          await SP.updateCaseStatus(orderId, 'pdf_generated',
+            'PDFs generiert und per Email an ' + session.data.email + ' gesendet am ' + today +
+            ' (Abmeldung' + (vollmachtOut ? ' + Vollmacht' : '') + ')');
+        }
+      } else {
+        console.error('❌ Web submit: email failed:', emailResult && emailResult.error);
+      }
+
+      // 5. Cleanup temp PDFs
+      for (const f of [abmeldungOut, vollmachtOut]) { if (f) { try { fs.unlinkSync(f); } catch (_) {} } }
+    } catch (genErr) {
+      console.error('❌ Web submit PDF/email error:', genErr.message);
+    }
+
     console.log('🌐 Web submission: ' + orderId + ' — ' + d.firstName + ' ' + d.lastName + ' (' + d.email + ')');
-    res.json({ ok: true, orderId });
+    res.json({ ok: true, orderId, emailSent: !!(emailResult && emailResult.success) });
   } catch (err) {
     const detail = err.response ? JSON.stringify(err.response.data).substring(0, 500) : '';
     console.error('API submit-abmeldung error:', err.message, detail);

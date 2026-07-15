@@ -109,6 +109,33 @@ async function uploadFile(orderId, localPath, filename) {
   return resp.data.webUrl || null;
 }
 
+// ── Download de um ficheiro da pasta do caso ────────────────────────────────
+async function downloadFile(orderId, filename, destPath) {
+  if (!DRIVE_ID) return null;
+  const token  = await getToken();
+  const spPath = `${CASES_FOLDER}/${orderId}/${filename}`;
+
+  try {
+    const resp = await axios.get(
+      `${GRAPH}/drives/${DRIVE_ID}/root:/${spPath}:/content`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'arraybuffer',
+        timeout: 60000,
+      }
+    );
+    fs.writeFileSync(destPath, Buffer.from(resp.data));
+    console.log(`⬇️  SP: Download OK: ${spPath}`);
+    return destPath;
+  } catch (e) {
+    if (e.response && e.response.status === 404) {
+      console.warn(`⚠️ SP download: ficheiro não encontrado: ${spPath}`);
+      return null;
+    }
+    throw e;
+  }
+}
+
 // ── Upload de imagem base64 para a pasta do caso ────────────────────────────
 async function uploadBase64(orderId, base64Data, filename) {
   if (!base64Data) return null;
@@ -472,6 +499,7 @@ module.exports = {
   isConfigured,
   createCaseFolder,
   uploadFile,
+  downloadFile,
   uploadBase64,
   uploadTelegramPhoto,
   createLedgerEntry,

@@ -483,6 +483,72 @@ app.post('/api/cases/:orderId/process', authMiddleware, upload.fields([
   }
 });
 
+// ── Resend the archived Abmeldung + Vollmacht PDFs to the client ────────────
+// Resends what is already in SharePoint rather than regenerating: the ledger
+// does not store dob/birthPlace, so a regenerated form would lose those fields.
+app.post('/api/cases/:orderId/send-documents', authMiddleware, async (req, res) => {
+  const tmpFiles = [];
+  try {
+    const { orderId } = req.params;
+    const caseData = await SP.getCase(orderId);
+    if (!caseData) return res.status(404).json({ error: 'Case not found' });
+    if (!caseData.Email) return res.status(400).json({ error: 'Keine Email-Adresse im Fall hinterlegt' });
+    if (!caseData.AbmeldungUrl) {
+      return res.status(400).json({ error: 'Keine PDFs vorhanden — bitte zuerst "Verarbeiten" ausführen' });
+    }
+
+    const pdfsDir = path.join(__dirname, 'pdfs');
+    if (!fs.existsSync(pdfsDir)) fs.mkdirSync(pdfsDir, { recursive: true });
+
+    const abmeldungPath = path.join(pdfsDir, `Abmeldung_${orderId}.pdf`);
+    const gotAbmeldung = await SP.downloadFile(orderId, `Abmeldung_${orderId}.pdf`, abmeldungPath);
+    if (!gotAbmeldung) return res.status(404).json({ error: 'Abmeldung-PDF nicht in SharePoint gefunden' });
+    tmpFiles.push(abmeldungPath);
+
+    let vollmachtPath = null;
+    if (caseData.VollmachtUrl) {
+      const p = path.join(pdfsDir, `Vollmacht_${orderId}.pdf`);
+      if (await SP.downloadFile(orderId, `Vollmacht_${orderId}.pdf`, p)) {
+        vollmachtPath = p;
+        tmpFiles.push(p);
+      }
+    }
+
+    const nameParts = (caseData.ClientName || '').split(' ');
+    const session = {
+      lang: caseData.Language || 'de',
+      chatId: caseData.ChatId || '',
+      data: {
+        orderId,
+        firstName: nameParts[0] || '',
+        lastName:  nameParts.slice(1).join(' ') || '',
+        email:     caseData.Email,
+        service:   caseData.Service || 'full',
+      },
+      _vollmachtPath: vollmachtPath,
+    };
+
+    const { sendAbmeldungEmail } = require('./email');
+    const result = await sendAbmeldungEmail(caseData.Email, abmeldungPath, session);
+    if (!result || !result.success) {
+      return res.status(500).json({ error: (result && result.error) || 'Email send failed' });
+    }
+    console.log('✅ Dashboard resend: documents emailed to', caseData.Email);
+
+    const today = new Date().toLocaleDateString('de-DE');
+    await SP.updateCaseStatus(orderId, caseData.Status || 'pdf_generated',
+      'Dokumente erneut per Email an ' + caseData.Email + ' gesendet am ' + today +
+      ' (Abmeldung' + (vollmachtPath ? ' + Vollmacht' : '') + ', manuell via Dashboard)');
+
+    res.json({ ok: true, orderId, to: caseData.Email, vollmacht: !!vollmachtPath });
+  } catch (err) {
+    console.error('❌ API send-documents error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    for (const f of tmpFiles) { try { fs.unlinkSync(f); } catch (_) {} }
+  }
+});
+
 // ── Landing page: submit Abmeldung request ──────────────────────────────────
 app.post('/api/submit-abmeldung', async (req, res) => {
   try {

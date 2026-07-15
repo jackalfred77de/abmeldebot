@@ -993,7 +993,8 @@ function renderSidebar(c) {
   const isFinal = ['completed','cancelled','delivery_email_sent','delivery_post_sent'].includes(c.Status);
   $('sidebarActions').innerHTML = `
     <div class="action-buttons">
-      ${(c.Status === 'awaiting_signature') ? '<button class="btn-action" style="background:#6a1b9a;color:#fff;" onclick="showProcessForm()">🔄 Verarbeiten (PDFs generieren)</button>' : ''}
+      ${(c.Status === 'awaiting_signature') ? '<button class="btn-action" style="background:#6a1b9a;color:#fff;" onclick="showProcessForm()">🔄 Verarbeiten (PDFs generieren)</button>
+<button class="btn-action" style="background:#00695c;color:#fff;" onclick="sendDocuments()">📧 Dokumente an Mandant senden</button>' : ''}
       <button class="btn-action btn-submit" onclick="updateStatus('submitted_to_behoerde')" ${isFinal ? 'disabled' : ''}>📤 Einreichen</button>
       ${(c.Service === 'full' && (c.Status === 'submitted_to_behoerde' || c.Status === 'pdf_generated')) ? '<button class="btn-action" style="background:#0369a1;color:#fff;" onclick="previewAmtEmail()">📬 An Bürgeramt senden</button>' : ''}
       ${(c.Status === 'sent_to_amt') ? '<button class="btn-action" style="background:#065f46;color:#fff;" onclick="triggerUploadBestaetigung()">📎 Bestätigung hochladen</button>' : ''}
@@ -1146,6 +1147,24 @@ async function sendFollowUp() {
   try {
     const data = await apiCall('POST', '/api/cases/' + selectedOrderId + '/send-followup');
     showToast('📧 Nachfass-Email gesendet an ' + (data.bezirk || 'Bürgeramt') + ' (' + (data.to || '') + ')');
+    await fetchCases();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+async function sendDocuments() {
+  if (!selectedOrderId) return;
+  const c = allCases.find(x => x.Title === selectedOrderId) || {};
+  if (!c.AbmeldungUrl) {
+    showToast('Keine PDFs vorhanden — bitte zuerst "Verarbeiten" ausführen', 'error');
+    return;
+  }
+  const confirmed = confirm('Abmeldung' + (c.VollmachtUrl ? ' + Vollmacht' : '') +
+    ' per Email an den Mandanten senden?\n\n' + (c.Email || '') );
+  if (!confirmed) return;
+  try {
+    const data = await apiCall('POST', '/api/cases/' + selectedOrderId + '/send-documents');
+    showToast('📧 Dokumente gesendet an ' + (data.to || '') + (data.vollmacht ? ' (Abmeldung + Vollmacht)' : ' (Abmeldung)'));
     await fetchCases();
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');

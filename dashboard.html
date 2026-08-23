@@ -39,6 +39,11 @@
   --font: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* Der globale margin:0-Reset oben trifft auch die eingebettete E-Mail-Vorschau
+   und laesst deren Absaetze aneinanderkleben. Innerhalb der Vorschau daher
+   wieder normale Absatzabstaende, damit sie dem echten Mailbild entspricht. */
+#amtPreviewBody p { margin: 0 0 12px; }
+#amtPreviewBody p:last-child { margin-bottom: 0; }
 html, body { height: 100%; }
 body {
   font-family: var(--font);

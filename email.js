@@ -9,7 +9,7 @@ const GRAPH_CLIENT_ID     = process.env.GRAPH_CLIENT_ID     || '';
 const GRAPH_CLIENT_SECRET = process.env.GRAPH_CLIENT_SECRET || '';
 const GRAPH_SENDER        = process.env.GRAPH_SENDER        || 'buero@rafer.de';
 const FIRM_EMAIL          = 'abmeldung@rafer.de';
-const { getEmailSignature } = require('./signature');
+const { getEmailSignature, getLogoAttachment, toPreviewHtml } = require('./signature');
 
 async function getGraphToken() {
   const url = `https://login.microsoftonline.com/${GRAPH_TENANT_ID}/oauth2/v2.0/token`;
@@ -37,7 +37,7 @@ async function sendAbmeldungEmail(toEmail, pdfPath, session, buildIdPdf) {
   const orderId   = data.orderId   || '';
   const isDiy     = data.service === 'diy';
   const pdfBase64 = fs.readFileSync(pdfPath).toString('base64');
-  const attachments = [{
+  const attachments = [getLogoAttachment(), {
     '@odata.type': '#microsoft.graph.fileAttachment',
     name: 'Abmeldung_' + orderId + '.pdf',
     contentType: 'application/pdf',
@@ -297,15 +297,15 @@ async function sendToBuergeramt(caseData, opts = {}) {
     getEmailSignature();
 
   if (dryRun) {
-    return { success: true, dryRun: true, to: amtEmail, subject, htmlBody, bezirk };
+    return { success: true, dryRun: true, to: amtEmail, subject, htmlBody: toPreviewHtml(htmlBody), bezirk };
   }
 
   if (!GRAPH_TENANT_ID || !GRAPH_CLIENT_ID || !GRAPH_CLIENT_SECRET) {
     console.log('Graph API nicht konfiguriert \u2014 simuliere B\u00fcrgeramt-Email');
-    return { success: true, simulated: true, to: amtEmail, subject, htmlBody, bezirk };
+    return { success: true, simulated: true, to: amtEmail, subject, htmlBody: toPreviewHtml(htmlBody), bezirk };
   }
 
-  const attachments = [];
+  const attachments = [getLogoAttachment()];
   const SP_DRIVE_ID = process.env.SP_DRIVE_ID || '';
 
   async function spFileToBase64(spUrl, fallbackName) {
@@ -498,7 +498,7 @@ async function sendBestaetigung(caseData) {
           body: { contentType: 'HTML', content: htmlBody },
           toRecipients: [{ emailAddress: { address: toEmail } }],
           replyTo: [{ emailAddress: { address: FIRM_EMAIL } }],
-          attachments: [{
+          attachments: [getLogoAttachment(), {
             '@odata.type': '#microsoft.graph.fileAttachment',
             name: pdfData.filename,
             contentType: 'application/pdf',
@@ -593,7 +593,7 @@ async function sendFollowUp(caseData) {
           toRecipients: [{ emailAddress: { address: amtEmail } }],
           ccRecipients: [{ emailAddress: { address: FIRM_EMAIL } }],
           replyTo: [{ emailAddress: { address: FIRM_EMAIL } }],
-          // No attachments for follow-up
+          attachments: [getLogoAttachment()], // nur das Inline-Logo
         },
         saveToSentItems: true,
       },

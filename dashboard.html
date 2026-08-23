@@ -255,6 +255,7 @@ tbody td {
   letter-spacing: 0.2px;
 }
 .badge-awaiting_signature { background: #fff3e0; color: #e65100; }
+.badge-documents_ready { background: #ede7f6; color: #4527a0; }
 .badge-created { background: var(--purple-bg); color: var(--purple); }
 .badge-pdf_generated { background: var(--purple-bg); color: var(--purple); }
 .badge-email_sent { background: var(--blue-bg); color: var(--blue); }
@@ -592,6 +593,7 @@ tbody td {
       <select id="filterStatus" onchange="applyFilters()">
         <option value="">Alle Status</option>
         <option value="awaiting_signature">Awaiting Signature</option>
+        <option value="documents_ready">Unterschrieben</option>
         <option value="created">Created</option>
         <option value="pdf_generated">PDF Generated</option>
         <option value="email_sent">Email Sent</option>
@@ -700,6 +702,7 @@ function shortDate(iso) {
 function statusLabel(s) {
   const map = {
     awaiting_signature: 'Awaiting Signature', created: 'Created', pdf_generated: 'PDF Generated', email_sent: 'Email Sent',
+    documents_ready: 'Unterschrieben',
     pending_review: 'Pending Review', submitted_to_behoerde: 'Submitted', sent_to_amt: 'Sent to Amt',
     confirmation_received: 'Bestätigung erhalten', delivery_email_sent: 'Email zugestellt',
     delivery_post_pending: 'Post ausstehend', delivery_post_sent: 'Post versendet', completed: 'Completed',
@@ -994,9 +997,10 @@ function renderSidebar(c) {
   $('sidebarActions').innerHTML = `
     <div class="action-buttons">
       ${(c.Status === 'awaiting_signature') ? '<button class="btn-action" style="background:#6a1b9a;color:#fff;" onclick="showProcessForm()">🔄 Verarbeiten (PDFs generieren)</button>' : ''}
+      ${(!isFinal && !['sent_to_amt','confirmation_received','confirmation_overdue','delivery_post_pending'].includes(c.Status)) ? '<button class="btn-action" style="background:#4527a0;color:#fff;" onclick="showSignedUploadForm()">✍️ Unterschriebene Dokumente hochladen</button>' : ''}
       ${c.AbmeldungUrl ? '<button class="btn-action" style="background:#00695c;color:#fff;" onclick="sendDocuments()">📧 Dokumente an Mandant senden</button>' : ''}
       <button class="btn-action btn-submit" onclick="updateStatus('submitted_to_behoerde')" ${isFinal ? 'disabled' : ''}>📤 Einreichen</button>
-      ${(c.Service === 'full' && (c.Status === 'submitted_to_behoerde' || c.Status === 'pdf_generated')) ? '<button class="btn-action" style="background:#0369a1;color:#fff;" onclick="previewAmtEmail()">📬 An Bürgeramt senden</button>' : ''}
+      ${(c.Service === 'full' && ['submitted_to_behoerde', 'pdf_generated', 'documents_ready'].includes(c.Status)) ? '<button class="btn-action" style="background:#0369a1;color:#fff;" onclick="previewAmtEmail()">📬 An Bürgeramt senden</button>' : ''}
       ${(c.Status === 'sent_to_amt') ? '<button class="btn-action" style="background:#065f46;color:#fff;" onclick="triggerUploadBestaetigung()">📎 Bestätigung hochladen</button>' : ''}
       ${(c.Status === 'confirmation_overdue' || c.Status === 'sent_to_amt') ? '<button class="btn-action" style="background:#c62828;color:#fff;" onclick="sendFollowUp()">📧 Nachfass-Email senden</button>' : ''}
       ${(c.Status === 'confirmation_received') ? '<button class="btn-action" style="background:#065f46;color:#fff;" onclick="sendBestaetigung()">📧 Per Email senden</button>' : ''}
@@ -1184,6 +1188,66 @@ async function markAsPosted() {
 }
 
 // ── PROCESS WEB CASE (upload docs + generate PDFs) ──
+// ── UNTERSCHRIEBENE DOKUMENTE (Papier-Rücklauf vom Mandanten) ──
+function showSignedUploadForm() {
+  if (!selectedOrderId) return;
+  const c = allCases.find(x => x.Title === selectedOrderId);
+  if (!c) return;
+  $('sidebarContent').innerHTML = `
+    <div style="padding:16px;background:#ede7f6;border-radius:var(--radius);margin-bottom:16px">
+      <div style="font-weight:600;font-size:14px;color:#4527a0;margin-bottom:8px">✍️ Unterschriebene Dokumente: ${esc(c.ClientName || c.Title)}</div>
+      <div style="font-size:12px;color:var(--text-muted)">Vom Mandanten zurückgeschickte Scans. Sie ersetzen die generierten PDFs im Fallordner und gehen so ans Bürgeramt.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">📄 Abmeldung, unterschrieben (PDF)</label>
+        <input type="file" id="signedAbmeldung" accept=".pdf" style="font-size:12px;width:100%">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">📄 Vollmacht, unterschrieben (PDF)</label>
+        <input type="file" id="signedVollmacht" accept=".pdf" style="font-size:12px;width:100%">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn-action" style="background:#4527a0;color:#fff;flex:1" onclick="uploadSignedDocs()" id="signedBtn">⬆️ Hochladen & Fall freigeben</button>
+        <button class="btn-action" style="background:var(--gray);color:#fff" onclick="fetchCases()">Abbrechen</button>
+      </div>
+      <div id="signedStatus" style="font-size:12px;color:var(--text-muted);min-height:20px"></div>
+    </div>
+  `;
+}
+
+async function uploadSignedDocs() {
+  if (!selectedOrderId) return;
+  const ab = $('signedAbmeldung');
+  const vm = $('signedVollmacht');
+  if (!ab.files[0] && !vm.files[0]) { showToast('Mindestens eine Datei auswählen', 'error'); return; }
+  const btn = $('signedBtn');
+  const status = $('signedStatus');
+  btn.disabled = true;
+  btn.textContent = '⏳ Lade hoch...';
+  status.textContent = 'Dokumente werden nach SharePoint hochgeladen...';
+  try {
+    const formData = new FormData();
+    if (ab.files[0]) formData.append('abmeldung', ab.files[0]);
+    if (vm.files[0]) formData.append('vollmacht', vm.files[0]);
+    const res = await fetch('/api/cases/' + selectedOrderId + '/upload-signed', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + TOKEN },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload fehlgeschlagen');
+    showToast('✅ Unterschriebene Dokumente hochgeladen — Status: documents_ready');
+    status.textContent = '✅ Fertig. Der Fall kann jetzt ans Bürgeramt gesendet werden.';
+    await fetchCases();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+    status.textContent = '❌ Fehler: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = '⬆️ Hochladen & Fall freigeben';
+  }
+}
+
 function showProcessForm() {
   if (!selectedOrderId) return;
   const c = allCases.find(x => x.Title === selectedOrderId);

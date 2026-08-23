@@ -249,6 +249,85 @@ app.post('/api/cases/:orderId/upload-bestaetigung', authMiddleware, upload.singl
   }
 });
 
+// ── Upload signed documents (paper return from client) ──────────────────────
+// Der Mandant hat Abmeldung/Vollmacht ausgedruckt, handschriftlich unterschrieben
+// und zurückgeschickt. Die Scans ersetzen die generierten PDFs im Fallordner,
+// damit sendToBuergeramt() genau diese Fassung als Anlage verschickt.
+app.post('/api/cases/:orderId/upload-signed', authMiddleware, upload.fields([
+  { name: 'abmeldung', maxCount: 1 },
+  { name: 'vollmacht', maxCount: 1 },
+]), async (req, res) => {
+  const files = req.files || {};
+  const tmpFiles = [];
+  const cleanup = () => { for (const f of tmpFiles) { try { fs.unlinkSync(f); } catch (_) {} } };
+  try {
+    const { orderId } = req.params;
+    for (const key of ['abmeldung', 'vollmacht']) {
+      if (files[key] && files[key][0]) tmpFiles.push(files[key][0].path);
+    }
+    if (!tmpFiles.length) {
+      return res.status(400).json({ error: 'Keine Datei hochgeladen (Feld "abmeldung" und/oder "vollmacht")' });
+    }
+    for (const key of ['abmeldung', 'vollmacht']) {
+      const f = files[key] && files[key][0];
+      if (!f) continue;
+      const ext = path.extname(f.originalname || '').toLowerCase();
+      if (ext !== '.pdf') {
+        cleanup();
+        return res.status(400).json({ error: 'Nur PDF-Dateien — "' + key + '" ist ' + (ext || 'ohne Endung') });
+      }
+    }
+
+    const caseData = await SP.getCase(orderId);
+    if (!caseData) { cleanup(); return res.status(404).json({ error: 'Case not found' }); }
+
+    const now = new Date().toLocaleDateString('de-DE');
+    const uploaded = {};
+    const updateFields = { LastUpdated: new Date().toISOString() };
+
+    if (files.abmeldung && files.abmeldung[0]) {
+      const name = 'Abmeldung_' + orderId + '.pdf';
+      const url = await SP.uploadFile(orderId, files.abmeldung[0].path, name);
+      if (url) { uploaded.abmeldung = url; updateFields.AbmeldungUrl = url; }
+    }
+    if (files.vollmacht && files.vollmacht[0]) {
+      const name = 'Vollmacht_' + orderId + '.pdf';
+      const url = await SP.uploadFile(orderId, files.vollmacht[0].path, name);
+      if (url) { uploaded.vollmacht = url; updateFields.VollmachtUrl = url; }
+    }
+    if (!Object.keys(uploaded).length) {
+      cleanup();
+      return res.status(500).json({ error: 'Upload nach SharePoint fehlgeschlagen' });
+    }
+
+    await SP.updateCaseField(orderId, updateFields);
+
+    const labels = [];
+    if (uploaded.abmeldung) labels.push('Abmeldung');
+    if (uploaded.vollmacht) labels.push('Vollmacht');
+    await SP.updateCaseStatus(orderId, 'documents_ready',
+      'Unterschriebene Dokumente hochgeladen am ' + now + ' via Dashboard (' + labels.join(' + ') + ') — ersetzt die generierte Fassung');
+
+    cleanup();
+
+    const tgBot = req.app.get('telegramBot');
+    const adminId = process.env.ADMIN_CHAT_ID;
+    if (tgBot && adminId) {
+      try {
+        await tgBot.telegram.sendMessage(adminId,
+          '✍️ Unterschriebene Dokumente hochgeladen\n👤 ' + (caseData.ClientName || orderId) + '\n📋 ' + orderId +
+          '\n📎 ' + labels.join(' + ') + '\n🏛 ' + (caseData.Bezirk || '?') + '\n➡️ Bereit zum Versand an Bürgeramt');
+      } catch (_) {}
+    }
+
+    res.json({ ok: true, orderId, uploaded, status: 'documents_ready' });
+  } catch (err) {
+    cleanup();
+    console.error('API upload-signed error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Send Abmeldebestätigung to client by email ──────────────────────────────
 app.post('/api/cases/:orderId/send-bestaetigung', authMiddleware, async (req, res) => {
   try {

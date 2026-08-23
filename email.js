@@ -308,21 +308,50 @@ async function sendToBuergeramt(caseData, opts = {}) {
   const attachments = [getLogoAttachment()];
   const SP_DRIVE_ID = process.env.SP_DRIVE_ID || '';
 
-  async function spFileToBase64(spUrl, fallbackName) {
-    if (!spUrl || !SP_DRIVE_ID) return null;
+  const casesFolder = process.env.SP_CASES_FOLDER || 'Abmeldung/Cases';
+
+  // Laedt eine Datei per konkretem Dateinamen aus dem Fallordner.
+  async function spPathToBase64(fileName, opts) {
+    if (!fileName || !SP_DRIVE_ID) return null;
+    const quiet = !!(opts && opts.quiet);
     try {
       const token = await getGraphToken();
-      const casesFolder = process.env.SP_CASES_FOLDER || 'Abmeldung/Cases';
-      const drivePath = casesFolder + '/' + orderId + '/' + fallbackName;
+      const drivePath = casesFolder + '/' + orderId + '/' + fileName;
       const resp = await axios.get(
-        'https://graph.microsoft.com/v1.0/drives/' + SP_DRIVE_ID + '/root:/' + drivePath + ':/content',
+        'https://graph.microsoft.com/v1.0/drives/' + SP_DRIVE_ID + '/root:/' + encodeURI(drivePath) + ':/content',
         { headers: { Authorization: 'Bearer ' + token }, responseType: 'arraybuffer', timeout: 30000 }
       );
       return Buffer.from(resp.data).toString('base64');
     } catch (e) {
-      console.error('\u26a0\ufe0f SP download error (' + fallbackName + '):', e.message);
+      if (!quiet) console.error('\u26a0\ufe0f SP download error (' + fileName + '):', e.message);
       return null;
     }
+  }
+
+  // Der Upload legt jede Datei unter ihrem eigenen Namen ab (z.B. id_frente.jpg)
+  // und merkt sich die webUrl. Ein geratener fallbackName trifft daher fuer
+  // regulaere Bot-Faelle nicht zu - deshalb zuerst den echten Namen aus der URL.
+  function fileNameFromSpUrl(spUrl) {
+    try {
+      const last = String(spUrl).split('?')[0].split('/').pop() || '';
+      return last ? decodeURIComponent(last) : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  async function spFileToBase64(spUrl, fallbackName) {
+    if (!spUrl || !SP_DRIVE_ID) return null;
+    const names = [];
+    const fromUrl = fileNameFromSpUrl(spUrl);
+    if (fromUrl) names.push(fromUrl);
+    if (fallbackName && names.indexOf(fallbackName) === -1) names.push(fallbackName);
+    for (const name of names) {
+      const b64 = await spPathToBase64(name, { quiet: true });
+      if (b64) return b64;
+    }
+    console.error('\u26a0\ufe0f SP download fehlgeschlagen, versucht: ' + names.join(', '));
+    return null;
   }
 
   const abmeldungB64 = await spFileToBase64(caseData.AbmeldungUrl, 'Abmeldung_' + orderId + '.pdf');
@@ -333,14 +362,22 @@ async function sendToBuergeramt(caseData, opts = {}) {
   if (vollmachtB64) {
     attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Vollmacht_' + orderId + '.pdf', contentType: 'application/pdf', contentBytes: vollmachtB64 });
   }
+  // Liegt bereits ein fertiges Ausweis-PDF im Fallordner (z.B. ein per Hand
+  // abgelegter Scan)? Dann direkt anhaengen, statt es aus Vorder- und
+  // Rueckseite zusammenzubauen.
+  const readyIdPdfB64 = await spPathToBase64('Ausweis_' + orderId + '.pdf', { quiet: true });
+  if (readyIdPdfB64) {
+    attachments.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: 'Ausweis_' + orderId + '.pdf', contentType: 'application/pdf', contentBytes: readyIdPdfB64 });
+  }
+
   // Build ID PDF from front + back images
   // Try to detect extension from SP URL, fallback to trying both
   const idFrontExt = (caseData.IdFrontUrl || '').match(/\.(png|jpg|jpeg)$/i)?.[0] || '.jpg';
   const idFrontFallback = 'Ausweis_' + orderId + idFrontExt;
-  const idFrontB64 = await spFileToBase64(caseData.IdFrontUrl, idFrontFallback);
+  const idFrontB64 = readyIdPdfB64 ? null : await spFileToBase64(caseData.IdFrontUrl, idFrontFallback);
   const idBackExt = (caseData.IdBackUrl || '').match(/\.(png|jpg|jpeg)$/i)?.[0] || '.jpg';
   const idBackFallback = 'Ausweis_hinten_' + orderId + idBackExt;
-  const idBackB64 = await spFileToBase64(caseData.IdBackUrl, idBackFallback);
+  const idBackB64 = readyIdPdfB64 ? null : await spFileToBase64(caseData.IdBackUrl, idBackFallback);
   if (idFrontB64) {
     try {
       const idPdfB64 = await buildIdPdfFromBase64(idFrontB64, idBackB64, orderId);

@@ -1003,6 +1003,7 @@ function renderSidebar(c) {
     <div class="action-buttons">
       ${(c.Status === 'awaiting_signature') ? '<button class="btn-action" style="background:#6a1b9a;color:#fff;" onclick="showProcessForm()">🔄 Verarbeiten (PDFs generieren)</button>' : ''}
       ${(!isFinal && !['sent_to_amt','confirmation_received','confirmation_overdue','delivery_post_pending'].includes(c.Status)) ? '<button class="btn-action" style="background:#4527a0;color:#fff;" onclick="showSignedUploadForm()">✍️ Unterschriebene Dokumente hochladen</button>' : ''}
+      ${!isFinal ? '<button class="btn-action" style="background:#00695c;color:#fff;" onclick="showIdUploadForm()">🪪 Ausweis hochladen</button>' : ''}
       ${c.AbmeldungUrl ? '<button class="btn-action" style="background:#00695c;color:#fff;" onclick="sendDocuments()">📧 Dokumente an Mandant senden</button>' : ''}
       <button class="btn-action btn-submit" onclick="updateStatus('submitted_to_behoerde')" ${isFinal ? 'disabled' : ''}>📤 Einreichen</button>
       ${(c.Service === 'full' && ['submitted_to_behoerde', 'pdf_generated', 'documents_ready'].includes(c.Status)) ? '<button class="btn-action" style="background:#0369a1;color:#fff;" onclick="previewAmtEmail()">📬 An Bürgeramt senden</button>' : ''}
@@ -1250,6 +1251,67 @@ async function uploadSignedDocs() {
     status.textContent = '❌ Fehler: ' + e.message;
     btn.disabled = false;
     btn.textContent = '⬆️ Hochladen & Fall freigeben';
+  }
+}
+
+function showIdUploadForm() {
+  if (!selectedOrderId) return;
+  const c = allCases.find(x => x.Title === selectedOrderId);
+  if (!c) return;
+  $('sidebarContent').innerHTML = `
+    <div style="padding:16px;background:#e0f2f1;border-radius:var(--radius);margin-bottom:16px">
+      <div style="font-weight:600;font-size:14px;color:#00695c;margin-bottom:8px">🪪 Ausweis: ${esc(c.ClientName || c.Title)}</div>
+      <div style="font-size:12px;color:var(--text-muted)">Web-Formular-Fälle bringen keinen Ausweis mit. Hier ablegen — er geht als Anlage 3 ans Bürgeramt. Entweder ein fertiges PDF oder Fotos der beiden Seiten.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">📄 Ausweis als PDF (bevorzugt)</label>
+        <input type="file" id="idPdf" accept=".pdf" style="font-size:12px;width:100%">
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:12px">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">…oder als Fotos — werden beim Versand zu einem PDF zusammengefügt:</div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">📸 Vorderseite (JPG/PNG)</label>
+        <input type="file" id="idFront" accept=".jpg,.jpeg,.png" style="font-size:12px;width:100%;margin-bottom:10px">
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">📸 Rückseite (JPG/PNG)</label>
+        <input type="file" id="idBack" accept=".jpg,.jpeg,.png" style="font-size:12px;width:100%">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn-action" style="background:#00695c;color:#fff;flex:1" onclick="uploadIdDoc()" id="idBtn">⬆️ Ausweis hochladen</button>
+        <button class="btn-action" style="background:var(--gray);color:#fff" onclick="fetchCases()">Abbrechen</button>
+      </div>
+      <div id="idStatus" style="font-size:12px;color:var(--text-muted);min-height:20px"></div>
+    </div>
+  `;
+}
+
+async function uploadIdDoc() {
+  if (!selectedOrderId) return;
+  const pdf = $('idPdf'), front = $('idFront'), back = $('idBack');
+  if (!pdf.files[0] && !front.files[0] && !back.files[0]) { showToast('Mindestens eine Datei auswählen', 'error'); return; }
+  const btn = $('idBtn'), status = $('idStatus');
+  btn.disabled = true;
+  btn.textContent = '⏳ Lade hoch...';
+  status.textContent = 'Ausweis wird nach SharePoint hochgeladen...';
+  try {
+    const formData = new FormData();
+    if (pdf.files[0]) formData.append('ausweis', pdf.files[0]);
+    if (front.files[0]) formData.append('ausweis_vorne', front.files[0]);
+    if (back.files[0]) formData.append('ausweis_hinten', back.files[0]);
+    const res = await fetch('/api/cases/' + selectedOrderId + '/upload-id', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + TOKEN },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload fehlgeschlagen');
+    showToast('✅ Ausweis hochgeladen');
+    status.textContent = '✅ Fertig. Der Ausweis geht als Anlage 3 mit ans Bürgeramt.';
+    await fetchCases();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+    status.textContent = '❌ Fehler: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = '⬆️ Ausweis hochladen';
   }
 }
 

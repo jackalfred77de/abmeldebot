@@ -328,6 +328,97 @@ app.post('/api/cases/:orderId/upload-signed', authMiddleware, upload.fields([
   }
 });
 
+// ── Upload ID document (Ausweis) ────────────────────────────────────────────
+// Faelle aus dem Web-Formular bringen keinen Ausweis mit — das Formular sammelt
+// ihn nicht, nur der Telegram-Flow tut das. Die Kanzlei holt ihn dann per Mail
+// oder Post ein und legt ihn hier ab, damit sendToBuergeramt() ihn als Anlage 3
+// mitschickt.
+// Zwei Wege: ein fertiges PDF wird direkt angehaengt; einzelne Fotos werden
+// beim Versand zu einem PDF zusammengebaut (wie beim Telegram-Upload).
+app.post('/api/cases/:orderId/upload-id', authMiddleware, upload.fields([
+  { name: 'ausweis', maxCount: 1 },
+  { name: 'ausweis_vorne', maxCount: 1 },
+  { name: 'ausweis_hinten', maxCount: 1 },
+]), async (req, res) => {
+  const files = req.files || {};
+  const tmpFiles = [];
+  const cleanup = () => { for (const f of tmpFiles) { try { fs.unlinkSync(f); } catch (_) {} } };
+  const FIELDS = ['ausweis', 'ausweis_vorne', 'ausweis_hinten'];
+  try {
+    const { orderId } = req.params;
+    for (const key of FIELDS) {
+      if (files[key] && files[key][0]) tmpFiles.push(files[key][0].path);
+    }
+    if (!tmpFiles.length) {
+      return res.status(400).json({ error: 'Keine Datei hochgeladen (Feld "ausweis", "ausweis_vorne" und/oder "ausweis_hinten")' });
+    }
+    const IMG = ['.jpg', '.jpeg', '.png'];
+    for (const key of FIELDS) {
+      const f = files[key] && files[key][0];
+      if (!f) continue;
+      const ext = path.extname(f.originalname || '').toLowerCase();
+      const allowed = key === 'ausweis' ? ['.pdf'] : IMG;
+      if (allowed.indexOf(ext) === -1) {
+        cleanup();
+        return res.status(400).json({ error: '"' + key + '" muss ' + allowed.join(' oder ') + ' sein — ist ' + (ext || 'ohne Endung') });
+      }
+    }
+
+    const caseData = await SP.getCase(orderId);
+    if (!caseData) { cleanup(); return res.status(404).json({ error: 'Case not found' }); }
+
+    const now = new Date().toLocaleDateString('de-DE');
+    const uploaded = {};
+    const updateFields = { LastUpdated: new Date().toISOString() };
+
+    if (files.ausweis && files.ausweis[0]) {
+      const url = await SP.uploadFile(orderId, files.ausweis[0].path, 'Ausweis_' + orderId + '.pdf');
+      if (url) { uploaded.ausweis = url; updateFields.IdFrontUrl = url; }
+    }
+    if (files.ausweis_vorne && files.ausweis_vorne[0]) {
+      const ext = path.extname(files.ausweis_vorne[0].originalname || '').toLowerCase() || '.jpg';
+      const url = await SP.uploadFile(orderId, files.ausweis_vorne[0].path, 'id_frente' + ext);
+      if (url) { uploaded.vorne = url; if (!uploaded.ausweis) updateFields.IdFrontUrl = url; }
+    }
+    if (files.ausweis_hinten && files.ausweis_hinten[0]) {
+      const ext = path.extname(files.ausweis_hinten[0].originalname || '').toLowerCase() || '.jpg';
+      const url = await SP.uploadFile(orderId, files.ausweis_hinten[0].path, 'id_verso' + ext);
+      if (url) { uploaded.hinten = url; updateFields.IdBackUrl = url; }
+    }
+    if (!Object.keys(uploaded).length) {
+      cleanup();
+      return res.status(500).json({ error: 'Upload nach SharePoint fehlgeschlagen' });
+    }
+
+    await SP.updateCaseField(orderId, updateFields);
+
+    const labels = [];
+    if (uploaded.ausweis) labels.push('PDF');
+    if (uploaded.vorne) labels.push('Vorderseite');
+    if (uploaded.hinten) labels.push('Rueckseite');
+    await SP.addCaseNote(orderId,
+      'Ausweis hochgeladen am ' + now + ' via Dashboard (' + labels.join(' + ') + ') — geht als Anlage 3 ans Buergeramt');
+
+    cleanup();
+
+    const tgBot = req.app.get('telegramBot');
+    const adminId = process.env.ADMIN_CHAT_ID;
+    if (tgBot && adminId) {
+      try {
+        await tgBot.telegram.sendMessage(adminId,
+          '🪪 Ausweis hochgeladen\n👤 ' + (caseData.ClientName || orderId) + '\n📋 ' + orderId +
+          '\n📎 ' + labels.join(' + ') + '\n➡️ Geht als Anlage 3 ans Bürgeramt');
+      } catch (_) {}
+    }
+
+    res.json({ ok: true, orderId, uploaded });
+  } catch (err) {
+    cleanup();
+    console.error('API upload-id error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Send Abmeldebestätigung to client by email ──────────────────────────────
 app.post('/api/cases/:orderId/send-bestaetigung', authMiddleware, async (req, res) => {
   try {
